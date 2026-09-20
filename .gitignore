@@ -15,3 +15,10 @@ artifacts/private/
 *.har
 *.trace
 .DS_Store
+
+# runtime state and traces (private, never committed)
+.aur-state/
+.aur-traces/
+.aur-*/ 
+results/raw/
+*.png

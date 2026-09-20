@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "phase-*", "feat/*", "fix/*", "chore/*"]
+  pull_request:
+
+jobs:
+  test:
+    # Public repo -> must never use a self-hosted runner.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install --python .venv/bin/python -e ".[dev]"
+      - name: Lint
+        run: .venv/bin/ruff check src tests
+      - name: Type check
+        run: .venv/bin/mypy src/adaptive_ui_runtime --ignore-missing-imports
+      - name: Unit tests (fake transport; DBOS workflow exercised)
+        run: .venv/bin/pytest -q --ignore=tests/test_live_browser_smoke.py
+        env:
+          AUR_TRANSPORT: "fake"
+      - name: Live browser smoke (real DOM end to end)
+        run: |
+          .venv/bin/playwright install --with-deps chromium
+          .venv/bin/pytest -q tests/test_live_browser_smoke.py

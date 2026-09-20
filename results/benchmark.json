@@ -1,0 +1,324 @@
+{
+  "generated_at": "2026-09-20T18:41:56",
+  "transport": "fake",
+  "reps": 3,
+  "python": "3.12.13",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "cases": {
+    "deterministic_dom_two_step": {
+      "goal": "type alpha then search",
+      "arms": {
+        "adaptive": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.9,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "strong_only": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "no_jev": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.6,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "no_fara": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.5,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "no_showui": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "deterministic_only": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        }
+      }
+    },
+    "ambiguous_target_fails_closed": {
+      "goal": "click a button",
+      "arms": {
+        "adaptive": {
+          "reps": 3,
+          "verified_success": 0,
+          "success_rate": 0.0,
+          "wall_p50_ms": 1.1,
+          "wall_p95_ms": 1.3,
+          "actions_mean": 0.0,
+          "observations_mean": 16.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {
+            "unexpected_state": 3
+          }
+        },
+        "strong_only": {
+          "reps": 3,
+          "verified_success": 0,
+          "success_rate": 0.0,
+          "wall_p50_ms": 1.2,
+          "wall_p95_ms": 1.2,
+          "actions_mean": 0.0,
+          "observations_mean": 16.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {
+            "unexpected_state": 3
+          }
+        },
+        "no_jev": {
+          "reps": 3,
+          "verified_success": 0,
+          "success_rate": 0.0,
+          "wall_p50_ms": 1.1,
+          "wall_p95_ms": 1.3,
+          "actions_mean": 0.0,
+          "observations_mean": 16.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {
+            "unexpected_state": 3
+          }
+        },
+        "no_fara": {
+          "reps": 3,
+          "verified_success": 0,
+          "success_rate": 0.0,
+          "wall_p50_ms": 1.1,
+          "wall_p95_ms": 1.2,
+          "actions_mean": 0.0,
+          "observations_mean": 16.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {
+            "unexpected_state": 3
+          }
+        },
+        "no_showui": {
+          "reps": 3,
+          "verified_success": 0,
+          "success_rate": 0.0,
+          "wall_p50_ms": 1.5,
+          "wall_p95_ms": 1.7,
+          "actions_mean": 0.0,
+          "observations_mean": 16.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {
+            "unexpected_state": 3
+          }
+        },
+        "deterministic_only": {
+          "reps": 3,
+          "verified_success": 0,
+          "success_rate": 0.0,
+          "wall_p50_ms": 0.3,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 0.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {
+            "unexpected_state": 3
+          }
+        }
+      }
+    },
+    "stateful_dom_eval_owned_by_manager": {
+      "goal": "g",
+      "arms": {
+        "adaptive": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.3,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "strong_only": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "no_jev": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "no_fara": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "no_showui": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        },
+        "deterministic_only": {
+          "reps": 3,
+          "verified_success": 3,
+          "success_rate": 1.0,
+          "wall_p50_ms": 0.4,
+          "wall_p95_ms": 0.4,
+          "actions_mean": 2.0,
+          "observations_mean": 4.0,
+          "manager_calls_mean": 0.0,
+          "jev_calls_mean": 0.0,
+          "fara_calls_mean": 0.0,
+          "showui_calls_mean": 0.0,
+          "recoveries_mean": 0.0,
+          "loops_mean": 0.0,
+          "failure_classes": {}
+        }
+      }
+    }
+  }
+}
