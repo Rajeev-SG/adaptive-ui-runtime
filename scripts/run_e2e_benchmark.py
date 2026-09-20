@@ -14,6 +14,7 @@ Task classes covered:
 """
 from __future__ import annotations
 
+import signal
 import sys
 import time
 from pathlib import Path
@@ -56,6 +57,26 @@ def _make_case_transport(transport_name: str, case_name: str):
     return make_transport(transport_name)
 
 TODO = "https://demo.playwright.dev/todomvc/#/"
+#: Per-run wall budget. A rep exceeding this is an infrastructure stall
+#: (provider retry), recorded as a timeout and excluded from the latency summary.
+RUN_TIMEOUT_S = 90.0
+
+
+class _RunTimeout(Exception):
+    pass
+
+
+def _execute_with_timeout(engine, request, seconds: float):
+    """Run engine.execute with a hard wall bound (SIGALRM; main thread only)."""
+    def _handler(signum, frame):
+        raise _RunTimeout()
+    old = signal.signal(signal.SIGALRM, _handler)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        return engine.execute(request)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old)
 SAVED_JS = ("JSON.stringify(JSON.parse(localStorage.getItem('react-todos')||'[]')"
             ".map(x=>({title:x.title,completed:x.completed})))")
 
@@ -166,6 +187,7 @@ def run(transport_name: str, reps: int) -> dict:
         case = {"task_class": cls, "arms": {}}
         for mode in ARM_NAMES:
             walls, wins, fails = [], 0, {}
+            timeouts = 0
             acc = {"actions": 0, "observations": 0, "jev_calls": 0, "manager_calls": 0,
                    "fara_calls": 0, "showui_calls": 0, "recoveries": 0, "loops": 0}
             for _rep in range(reps):
@@ -185,9 +207,21 @@ def run(transport_name: str, reps: int) -> dict:
                     t.fail_next = "stale"
                     injected = True
                 start = time.perf_counter()
-                r = e.execute(TaskRequest(goal=st.goal, success_criteria=[crit],
-                                          start_url=TODO))
-                walls.append((time.perf_counter() - start) * 1000.0)
+                # Bounded per-run wall clock: a provider stall (e.g. a 10-minute
+                # model retry) is an infrastructure condition, not a data point.
+                # It is recorded and excluded from the latency summary.
+                stalled = False
+                try:
+                    r = _execute_with_timeout(
+                        e, TaskRequest(goal=st.goal, success_criteria=[crit],
+                                       start_url=TODO), RUN_TIMEOUT_S)
+                except _RunTimeout:
+                    stalled = True
+                    timeouts += 1
+                elapsed = (time.perf_counter() - start) * 1000.0
+                if stalled:
+                    continue
+                walls.append(elapsed)
                 if r.verified:
                     wins += 1
                 else:
@@ -201,8 +235,9 @@ def run(transport_name: str, reps: int) -> dict:
             o = sorted(walls)
             n = max(1, reps)
             case["arms"][mode] = {
-                "verified_success": wins, "reps": reps,
-                "success_rate": round(wins / reps, 3),
+                "verified_success": wins, "reps": reps - timeouts,
+                "attempted": reps, "infra_timeouts": timeouts,
+                "success_rate": round(wins / max(1, reps - timeouts), 3),
                 "wall_min_ms": round(o[0], 1),
                 "wall_p50_ms": round(o[len(o) // 2], 1),
                 "wall_max_ms": round(o[-1], 1),

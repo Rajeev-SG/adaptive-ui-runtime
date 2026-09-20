@@ -167,3 +167,30 @@ def test_recovery_case_refuses_non_injecting_transport():
     except SystemExit:
         raised = True
     assert raised, "recovery case must refuse a non-fault-injecting transport"
+
+
+def test_run_timeout_is_classified_as_infra():
+    """A rep exceeding the wall budget is an infrastructure timeout, not a
+    latency data point (guards the 10-minute provider-stall case)."""
+    import importlib.util
+    import sys
+    import time
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "scripts/run_e2e_benchmark.py"
+    spec = importlib.util.spec_from_file_location("e2ebench2", p)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["e2ebench2"] = mod
+    spec.loader.exec_module(mod)
+
+    class SlowEngine:
+        def execute(self, request):
+            time.sleep(5)
+            return None
+
+    t0 = time.perf_counter()
+    raised = False
+    try:
+        mod._execute_with_timeout(SlowEngine(), object(), 0.3)
+    except mod._RunTimeout:
+        raised = True
+    assert raised and (time.perf_counter() - t0) < 3.0
