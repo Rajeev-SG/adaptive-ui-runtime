@@ -4,6 +4,38 @@ A fast, accuracy-first execution runtime for browser and UI automation.
 
 The runtime gives coding/agent systems **one interface** for UI work while dynamically choosing the fastest reliable execution path underneath: deterministic browser actions, Jev, Playwriter, Browser Relay, local Fara, visual grounding, or a strong long-context model.
 
+## Build strategy: compose, do not rebuild
+
+This repository should be **thin orchestration over components that already exist**.
+
+Most of the hard pieces are already:
+- on disk in the related project repos or model/browser caches;
+- installed locally;
+- or available as mature OSS.
+
+The implementation must actively avoid:
+- recloning repos that already exist locally;
+- redownloading model weights already cached;
+- reinstalling browser runtimes already present;
+- copying working code into a second implementation;
+- building a new workflow engine, browser engine, self-healing framework, benchmark harness, MCP framework or observability stack.
+
+Expected sources of truth:
+
+- `Rajeev-SG/jev-tests` — faithful Jev framing, `BridgeBrowser`, browser fast-path code/results.
+- `Rajeev-SG/local_cua` — Fara/ShowUI/TongUI adapters, local artefacts and measured results.
+- `Rajeev-SG/web-automation-microbench` — tasks, reset logic and independent verifiers.
+- DBOS — durability/resume.
+- Pydantic AI — typed manager/model orchestration.
+- Playwriter / Browser Relay — existing-session execution.
+- Stagehand / Browser Harness — reusable browser resilience/self-healing where they add value.
+- MCP SDK — protocol/server plumbing.
+- OpenTelemetry-compatible tooling — traces/metrics.
+
+Our bespoke surface should mostly be **routing, contracts, thin adapters, verification composition and bounded recovery orchestration**.
+
+See [Reuse-first implementation policy](docs/REUSE_FIRST.md) and [local asset inventory](docs/ASSET_INVENTORY.md). Agents must run this preflight before implementing or downloading anything.
+
 ## Objective
 
 Optimise lexicographically for:
@@ -43,6 +75,8 @@ The strong model owns long-horizon planning and genuinely ambiguous recovery. It
 
 ## Non-negotiable principles
 
+- **Reuse first.** Locate and reuse local/project/upstream implementations before writing or downloading anything.
+- **Minimal bespoke code.** This repo owns integration policy and glue, not replacements for mature upstream systems.
 - **Fail closed.** "DONE" from an acting model is never proof of success.
 - **Independent verification.** Every state-changing subtask has explicit postconditions checked outside the actor.
 - **Bounded workers.** Jev/Fara/other workers get action/time budgets; repeated guessing is forbidden.
@@ -51,7 +85,6 @@ The strong model owns long-horizon planning and genuinely ambiguous recovery. It
 - **Route by evidence.** Promotion thresholds come from measured task success, not model reputation.
 - **Strong-model context is preserved.** The manager can hold full task/history context while delegating bounded UI work.
 - **One agent-facing product surface.** Agents call the runtime, not individual Jev/Fara/browser tools.
-- **Reuse, do not reinvent.** Existing mature OSS and the proven code in `local_cua`, `jev-tests`, and `web-automation-microbench` should be reused before bespoke code is written.
 
 ## Agent-facing surface
 
@@ -80,13 +113,15 @@ Visual workers     Fara 4B, optional 9B escalation, ShowUI/TongUI where justifie
 Browser layer      existing BridgeBrowser contract
 Transports         Playwriter, Browser Relay, Stagehand, Browser Harness
 Verification       DOM/state/file/url/API/screenshot invariants
-Recovery           deterministic repair -> route escalation -> manager replan
+Recovery           orchestrate existing repair capabilities -> manager replan
 Telemetry          OpenTelemetry-compatible traces + benchmark metrics
 ```
 
 See:
 - [Requirements](docs/REQUIREMENTS.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Reuse-first policy](docs/REUSE_FIRST.md)
+- [Asset inventory](docs/ASSET_INVENTORY.md)
 - [Evaluation contract](docs/EVALUATION.md)
 - [Agent integration](docs/AGENT_INTEGRATION.md)
 - [Implementation rules](AGENTS.md)
@@ -99,7 +134,7 @@ Do not rerun foundational work merely to rediscover it.
 - `Rajeev-SG/local_cua`: local Fara / ShowUI / TongUI / UGround screening and the Fara 9B delegation-frontier work.
 - `Rajeev-SG/web-automation-microbench`: canonical real-work task/reset/verifier corpus.
 
-These repos are evidence and reusable inputs. This repo owns the **integrated runtime**.
+These repos are evidence and reusable inputs. This repo owns the **integrated runtime**, not duplicate implementations.
 
 ## Definition of done for v1
 
