@@ -95,7 +95,7 @@ The strong model is good at:
 
 It is a poor choice for every routine inner-loop action because repeated full-context turns add latency and cost.
 
-Jev is useful where the decision can be reduced to a small candidate set. Fara is useful when a bounded section is visual/awkward and can be delegated locally. Structured transports are preferable when they can act deterministically.
+Jev is useful where the decision can be reduced to a small candidate set. Fara 4B is useful for grounding and very short bounded visual work; ShowUI 2B is the preferred cheap actor candidate when the next subgoal is already known. `local_cua` PR #16 shows that bare Fara should not own stateful/live-site DOM-eval workflows, and that Fara 9B is not a useful v1 escalation tier. Structured transports and the strong planner own those richer state channels.
 
 The verifier, not the actor, determines progress.
 
@@ -176,14 +176,19 @@ The initial policy should be simple and measurable:
 ```text
 if verified deterministic action/recipe exists:
     execute deterministically
-elif finite structured browser decision and Jev is calibrated for this class:
-    use Jev
-elif structured browser executor can directly resolve the action:
+elif structured browser executor can resolve the action unambiguously:
     use Playwriter/Relay/Stagehand
-elif bounded visual micro-job:
-    use Fara
+elif finite browser decision and Jev is calibrated for this class:
+    use Jev
+elif known subgoal only needs local visual grounding/action:
+    use ShowUI-2B or Fara-4B
 else:
-    call strong manager
+    use/re-enter the strong manager
+
+# For stateful, multi-item or DOM/eval-dependent workflows,
+# the strong manager may own the outer loop from the start
+# and delegate individual actions to the faster tiers above.
+# Never escalate Fara-4B -> Fara-9B in v1.
 ```
 
 After every mutation: verify.
@@ -204,11 +209,14 @@ Defaults should be conservative.
 Example:
 
 ```text
-Fara goal: select UK, apply filter
-max_actions: 4
+Fara goal: click/open the visually identified country control
+max_actions: 2
 unchanged_state_limit: 1
-verification: selected_country == "UK" && filter_applied
-fallback: structured transport -> manager
+verification: target control opened or expected value changed
+fallback: ShowUI/structured transport -> manager
+
+# The manager/structured layer, not bare Fara, owns a stateful
+# "select UK and apply filters across a live report" workflow.
 ```
 
 ## Cycle detection
