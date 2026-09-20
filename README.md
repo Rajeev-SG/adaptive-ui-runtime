@@ -36,6 +36,37 @@ Our bespoke surface should mostly be **routing, contracts, thin adapters, verifi
 
 See [Reuse-first implementation policy](docs/REUSE_FIRST.md) and [local asset inventory](docs/ASSET_INVENTORY.md). Agents must run this preflight before implementing or downloading anything.
 
+## Quick start (agents)
+
+One tool, one code path:
+
+```bash
+pip install -e .                      # or: uv pip install -e .
+aur execute --task task.yaml --transport isolated   # or relay / playwriter
+aur status <run-id>
+aur trace <run-id>
+aur evaluate --task task.yaml --modes adaptive,strong_only --reps 5
+aur serve-mcp                          # exposes ui.execute/inspect/verify/plan/status/resume/trace/evaluate
+```
+
+Python and MCP run the exact same runtime:
+
+```python
+from adaptive_ui_runtime.runtime import Runtime
+from adaptive_ui_runtime.contracts import TaskRequest, SuccessCriterion
+
+result = Runtime(transport="isolated").execute(TaskRequest(
+    goal="add the two todos",
+    success_criteria=[SuccessCriterion(kind="js_rule", description="saved todos",
+        rule={"js": "localStorage.getItem('react-todos')", "expected": None})],
+))
+assert result.verified
+```
+
+An agent should normally call only `ui.execute` with concrete success criteria,
+then `ui.trace` to debug a failure. It never needs to choose Jev/Fara/Playwriter
+or any transport. See `docs/AGENT_INTEGRATION.md` and `results/RESULTS.md`.
+
 ## Objective
 
 Optimise lexicographically for:

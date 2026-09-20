@@ -136,7 +136,8 @@ class JevWorker:
             value = None
             if op == "type":
                 value = (obs.structured_state.get("next_value")
-                         or obs.structured_state.get("field") or "")
+                         or obs.structured_state.get("field")
+                         or self._text_helper(goal))
             self.calls += 1
             latency = (time.perf_counter() - start) * 1000.0
             self.latencies.append(latency)
@@ -149,6 +150,17 @@ class JevWorker:
             )
         except Exception as exc:
             return self._uncertain(start, f"jev error: {exc.__class__.__name__}")
+
+    @staticmethod
+    def _text_helper(goal: str) -> str:
+        """The generated text helper jev-tests describes: Jev never emits text
+        itself, so the literal to type is taken from the goal when quoted."""
+        import re
+        for pat in (r"'([^']+)'", r'"([^"]+)"', r"\u201c([^\u201d]+)\u201d"):
+            m = re.search(pat, goal)
+            if m:
+                return m.group(1)
+        return ""
 
     def _uncertain(self, start: float, detail: str) -> WorkerResult:
         self.calls += 1

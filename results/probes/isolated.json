@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-09-20T21:32:46",
+  "instrument": "https://demo.playwright.dev/todomvc/#/",
+  "backend_presence": {
+    "playwriter": true,
+    "browser_relay": true,
+    "stagehand_node_modules": false,
+    "browser_harness_installed": true,
+    "chromium_ms_playwright": true
+  },
+  "probes": {
+    "isolated": {
+      "transport": "isolated",
+      "steps": [],
+      "has_reset": true,
+      "targets": 4,
+      "typed_value": "probe",
+      "stale_fails_closed": true,
+      "ok": true
+    }
+  }
+}

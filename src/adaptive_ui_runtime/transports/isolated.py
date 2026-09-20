@@ -90,9 +90,42 @@ class IsolatedBrowserTransport:
             raise RuntimeError("stale or covered target")
         return f"[data-aur='{target.node}']"
 
+    #: Playwright actionability errors that mean "present but not the topmost /
+    #: not visible", which a *targeted* force-click may legitimately handle.
+    _FORCEABLE = (
+        "intercepts pointer events",
+        "element is not visible",
+        "outside of the viewport",
+        "not stable",
+    )
+
     def click(self, target: Target) -> ActionResult:
         self.commands += 1
-        self.page.locator(self._sel(target)).click(timeout=8000)
+        loc = self.page.locator(self._sel(target))
+        try:
+            loc.click(timeout=8000)
+        except Exception as exc:
+            msg = str(exc)
+            if not any(marker in msg for marker in self._FORCEABLE):
+                # Any other failure (timeout, detached, strict-mode, unrelated)
+                # must fail closed rather than skip actionability checks.
+                from .base import StaleTargetError
+                raise StaleTargetError(f"click failed: {msg[:180]}") from exc
+            # Verified the element is stamped and present; a covering element is
+            # the expected TodoMVC opacity:0 case. Re-check the hit target first.
+            topmost_ok = self.page.evaluate(
+                """(n) => {
+                  const e = document.querySelector(`[data-aur='${n}']`);
+                  if (!e) return false;
+                  const r = e.getBoundingClientRect();
+                  const top = document.elementFromPoint(r.x + r.width/2, r.y + r.height/2);
+                  return !!top && (top === e || e.contains(top) || top.contains(e));
+                }""", target.node)
+            if not topmost_ok:
+                from .base import StaleTargetError
+                raise StaleTargetError(
+                    f"target {target.id} is covered by another element") from exc
+            loc.click(timeout=8000, force=True)
         return ActionResult(ok=True, changed_state=True)
 
     def type(self, target: Target, text: str) -> ActionResult:
@@ -134,3 +167,24 @@ class IsolatedBrowserTransport:
                 fn()
             except Exception:
                 pass
+
+
+class FaultInjectingIsolatedTransport(IsolatedBrowserTransport):
+    """Test-only transport: injects a one-shot stale-target failure.
+
+    Kept out of the production transport; used by recovery benchmarks/tests.
+    """
+
+    name = "isolated-faulty"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.fail_next: str | None = None
+        super().__init__(*args, **kwargs)
+
+    def _sel(self, target: Target) -> str:
+        if self.fail_next:
+            kind, self.fail_next = self.fail_next, None
+            from .base import StaleTargetError
+            if kind == "stale":
+                raise StaleTargetError("injected stale target")
+        return super()._sel(target)

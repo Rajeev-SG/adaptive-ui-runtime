@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-09-20T21:35:07",
+  "instrument": "https://demo.playwright.dev/todomvc/#/",
+  "backend_presence": {
+    "playwriter": true,
+    "browser_relay": true,
+    "stagehand_node_modules": false,
+    "browser_harness_installed": true,
+    "chromium_ms_playwright": true
+  },
+  "probes": {
+    "playwriter": {
+      "transport": "playwriter",
+      "session": "2",
+      "steps": [
+        {
+          "op": "navigate",
+          "ms": 361.3
+        },
+        {
+          "op": "observe",
+          "targets": 4,
+          "ms": 216.4
+        },
+        {
+          "op": "type",
+          "ok": true,
+          "ms": 550.7
+        }
+      ],
+      "textbox_targets": 1,
+      "can_type": true,
+      "typed_value": "probe-value",
+      "ok": true
+    }
+  }
+}

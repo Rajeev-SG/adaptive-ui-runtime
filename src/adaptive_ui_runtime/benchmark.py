@@ -30,6 +30,28 @@ def git_rev(path: Path) -> str:
         return "unknown"
 
 
+def git_tree(path: Path) -> str:
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD^{tree}"], cwd=path,
+                              capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def code_digest(path: Path) -> str:
+    """sha256 over the sorted source files — content-addressed provenance that
+    is immune to commit-wrapper churn (the results commit does not change code,
+    so the digest of the reviewed code and the digest recorded here must match).
+    """
+    import hashlib
+    h = hashlib.sha256()
+    src = path / "src"
+    for f in sorted(src.rglob("*.py")):
+        h.update(str(f.relative_to(path)).encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
 def _pct(values: list[float], p: float) -> float | None:
     if not values:
         return None
@@ -95,29 +117,43 @@ def run_suite(cases: list[dict[str, Any]], modes: list[EvaluationMode] | None = 
 
 
 def write_results(results: dict[str, Any], out_dir: Path,
-                  commit: str = "unknown") -> tuple[Path, Path]:
+                  commit: str = "unknown", tree: str = "unknown",
+                  digest: str = "unknown") -> tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
+    results.setdefault("provenance", {})
+    results["provenance"].update({"code_commit": commit, "code_tree": tree,
+                                  "code_digest": digest})
     json_path = out_dir / "benchmark.json"
     json_path.write_text(json.dumps(results, indent=2))
 
     lines = ["# adaptive-ui-runtime benchmark results", ""]
     lines.append(f"- generated: {results['generated_at']}")
-    lines.append(f"- commit: `{commit}`")
+    lines.append(f"- provenance: code commit `{commit}`, code tree `{tree}`, "
+                 f"code digest `{digest}`")
+    lines.append("  (the digest is sha256 over sorted src/**/*.py and is the "
+                 "authoritative, commit-independent link to the reviewed code)")
     lines.append(f"- transport: `{results['transport']}`  reps/arm: {results['reps']}")
-    lines.append(f"- python: {results['python']}  platform: {results['platform']}")
+    if results.get("python"):
+        lines.append(f"- python: {results['python']}  platform: {results.get('platform','')}")
+    if results.get("task_class"):
+        lines.append(f"- task class: `{results['task_class']}`")
     lines.append("")
-    lines.append("| case | mode | verified | success | wall p50 ms | wall p95 ms | actions | "
-                 "manager | jev | fara | showui | recoveries | loops | failures |")
-    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    lines.append("| case | mode | verified | success | wall min ms | wall median ms | wall max ms | "
+                 "actions | manager | jev | fara | showui | recoveries | loops | failures |")
+    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
     for name, case in results["cases"].items():
         for mode, arm in case["arms"].items():
+            def g(k, d=0, _a=arm):
+                return _a.get(k, d)
+            rate = arm.get("success_rate", 0.0) or 0.0
             lines.append(
-                f"| {name} | {mode} | {arm['verified_success']}/{arm['reps']} | "
-                f"{arm['success_rate']:.2f} | {arm['wall_p50_ms']} | {arm['wall_p95_ms']} | "
-                f"{arm['actions_mean']} | {arm['manager_calls_mean']} | {arm['jev_calls_mean']} | "
-                f"{arm['fara_calls_mean']} | {arm['showui_calls_mean']} | "
-                f"{arm['recoveries_mean']} | {arm['loops_mean']} | "
-                f"{json.dumps(arm['failure_classes'])} |")
+                f"| {name} | {mode} | {arm.get('verified_success', 0)}/{arm.get('reps', 0)} | "
+                f"{rate:.2f} | {g('wall_min_ms', g('wall_p50_ms'))} | {g('wall_p50_ms')} | "
+                f"{g('wall_max_ms', g('wall_p95_ms'))} | "
+                f"{g('actions_mean')} | {g('manager_calls_mean')} | {g('jev_calls_mean')} | "
+                f"{g('fara_calls_mean')} | {g('showui_calls_mean')} | "
+                f"{g('recoveries_mean')} | {g('loops_mean')} | "
+                f"{json.dumps(arm.get('failure_classes', {}))} |")
     md_path = out_dir / "RESULTS.md"
     md_path.write_text("\n".join(lines) + "\n")
     return json_path, md_path

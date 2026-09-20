@@ -437,9 +437,16 @@ class Engine:
         want = raw.get("target_any") or raw.get("target_kind")
         if want:
             matches = [t for t in obs.targets if t.kind == want or t.role == want]
+            if "target_nth" in raw:
+                idx = int(raw["target_nth"])
+                if idx < 0 or idx >= len(matches):
+                    return None  # out of range -> fail closed
+                raw["target"] = matches[idx].id
+                return raw
             if len(matches) != 1:
                 # Ambiguous (several candidates) or absent: never bind to an
                 # arbitrary first hit — fail with UNEXPECTED_STATE instead.
+                # A deterministic ordinal (`target_nth`) is required to choose.
                 return None
             raw["target"] = matches[0].id
             return raw
@@ -553,15 +560,45 @@ class Engine:
         return None
 
     def _manager_decision(self, subtask: Subtask, obs: Observation) -> Any | None:
-        """Manager-owned structured step: choose the next target deterministically
-        from observed state (the DOM/eval channel), not from a visual model."""
+        """Manager-owned step.
+
+        Uses the structured/DOM channel first (cheap, deterministic). If that
+        cannot resolve, it asks the strong model for one action — the slow,
+        accurate path a fast route exists to avoid. Falls back to proposing DONE
+        (which the verifier may reject) only when no manager is available.
+        """
         if not self.config.enable_strong_manager:
             return None
         proposal = self._structured(subtask, obs)
         if proposal is not None:
             return proposal
-        # Nothing left to do structurally -> propose DONE for the verifier.
-        return self._proposal([], done=True)
+        decision = self.manager.decide_action(
+            subtask.goal,
+            [{"id": t.id, "kind": t.kind, "label": t.label} for t in obs.targets],
+            obs.structured_state,
+        )
+        self.metrics.inc("manager_calls")
+        self.tracer.emit("manager_decision", subtask=subtask.id,
+                         decision=str(decision)[:200])
+        if decision is None:
+            return self._proposal([], done=True)
+        if decision.get("done"):
+            return self._proposal([], done=True)
+        kind = decision.get("action", "click")
+        target = decision.get("target")
+        if target is None:
+            # Bind a lone unambiguous candidate of the right kind (deterministic
+            # glue; still fail closed if there is more than one).
+            want = "textbox" if kind == "type" else "button"
+            matches = [t for t in obs.targets if t.kind == want]
+            if len(matches) == 1:
+                target = matches[0].id
+        value = decision.get("value")
+        if kind == "type" and not value:
+            value = self.jev._text_helper(subtask.goal) or obs.structured_state.get(
+                "next_value", "")
+        return self._proposal([CandidateAction(
+            kind=kind, target=target, value=value, confidence=0.8, source="manager")])
 
     # -- action execution -------------------------------------------------
     #: Actions that do not address a specific element.

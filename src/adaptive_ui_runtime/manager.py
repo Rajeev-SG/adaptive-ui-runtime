@@ -36,9 +36,38 @@ strong_manager.
 """
 
 
+class ActionDecisionOut(BaseModel):
+    """A single action chosen by the strong manager when no cheap route resolved."""
+    action: str = "click"          # click | type | key | done
+    target: str | None = None      # observed target id
+    value: str | None = None
+    rationale: str = ""
+
+
 class ManagerPlanOut(BaseModel):
     subtasks: list[dict[str, Any]]
     rationale: str = ""
+
+
+def _run_sync(agent: Any, prompt: str) -> Any:
+    """Run a Pydantic AI agent synchronously even if an event loop is running.
+
+    `Agent.run_sync` refuses when called from inside a running loop (e.g. the
+    DBOS workflow context). In that case run the coroutine in a dedicated thread
+    with its own loop.
+    """
+    try:
+        import asyncio
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return agent.run_sync(prompt)  # no loop running -> normal path
+    import concurrent.futures
+
+    def _run() -> Any:
+        return asyncio.run(agent.run(prompt))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        return ex.submit(_run).result()
 
 
 def _manager_available() -> bool:
@@ -126,7 +155,7 @@ class Manager:
             indent=2,
         )
         start = time.perf_counter()
-        result = agent.run_sync(prompt)
+        result = _run_sync(agent, prompt)
         self.latency_ms += (time.perf_counter() - start) * 1000.0
         self.calls += 1
         usage = getattr(result, "usage", None)
@@ -167,6 +196,61 @@ class Manager:
             raise ValueError("manager returned no subtasks")
         return Plan(goal=request.goal, subtasks=subtasks,
                     rationale=out.rationale, manager_calls=self.calls)
+
+    def decide_action(self, goal: str, targets: list[dict[str, Any]],
+                      state: dict[str, Any]) -> dict[str, Any] | None:
+        """Choose one action with the strong model when cheap routes failed.
+
+        Returns {action, target, value} or None when unavailable. This is the
+        manager-owned inner step for stateful/ambiguous cases; it is the slow,
+        accurate path the fast routes exist to avoid.
+        """
+        if not _manager_available():
+            return None
+        try:
+            from pydantic_ai import Agent
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            provider = OpenAIProvider(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+            )
+            model = OpenAIChatModel(self.model_name.split(":", 1)[-1], provider=provider)
+            from pydantic_ai import ModelSettings
+            agent = Agent(
+                model, output_type=ActionDecisionOut,
+                model_settings=ModelSettings(max_tokens=200, temperature=0),
+                system_prompt=(
+                    "You drive a browser one action at a time. Pick the single "
+                    "next action that advances the goal. Choose target from the "
+                    "provided observed ids only. Use action=done only when the "
+                    "goal is met. Reply with the structured object only; keep "
+                    "rationale under 15 words."))
+            prompt = json.dumps({"goal": goal, "elements": targets,
+                                 "state": state}, default=str)[:6000]
+            start = time.perf_counter()
+            result = _run_sync(agent, prompt)
+            self.latency_ms += (time.perf_counter() - start) * 1000.0
+            self.calls += 1
+            usage = getattr(result, "usage", None)
+            if usage is not None:
+                self.input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
+                self.output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+            out: ActionDecisionOut = result.output
+            if out.action in ("done", "finish", "complete"):
+                return {"done": True}
+            # Normalise synonyms to the runtime action vocabulary.
+            action = {
+                "write": "type", "input": "type", "fill": "type", "enter": "type",
+                "press": "key", "tap": "click", "navigate": "click",
+            }.get(out.action, out.action)
+            if action not in ("click", "type", "key", "select", "scroll"):
+                return None
+            return {"action": action, "target": out.target, "value": out.value,
+                    "rationale": out.rationale}
+        except Exception:
+            return None
 
     def _fallback_plan(self, request: TaskRequest) -> Plan:
         return Plan(
