@@ -39,6 +39,9 @@ def make_transport(name: str | None = None, url: str | None = None,
     if name == "playwriter":
         from .transports.playwriter import PlaywriterTransport
         return PlaywriterTransport(url=url, session=session)
+    if name == "isolated":
+        from .transports.isolated import IsolatedBrowserTransport
+        return IsolatedBrowserTransport(url=url)
     if name == "relay":
         from .transports.relay import RelayTransport
         return RelayTransport(url=url, session=session)

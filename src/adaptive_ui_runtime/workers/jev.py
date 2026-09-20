@@ -2,12 +2,12 @@
 
 Reuses the *faithful two-question framing* proven in `Rajeev-SG/jev-tests`
 (`src/jev_tests/classifier_policy.py` @ 4e5ed27): upstream asks "which
-operation" then "<operation>_target", in one request, over upstream's own
-`action_space()`. The model never emits a selector; it selects an observed node
-index that code revalidates.
+operation", then "<operation>_target", in **one** batch request, over upstream's
+own `action_space()`. The model never emits a selector — it selects an observed
+node id that code revalidates.
 
-Endpoint: classifier.dev (`jev-1.13.0` *is* Jev). No API key required, matching
-the documented jev-tests setup. A `Transport` is used for observation only.
+Endpoint: classifier.dev (`jev-1.13.0` *is* Jev); no API key required.
+`CLASSIFIER_URL`/`CLASSIFIER_API_KEY` are pluggable.
 """
 
 from __future__ import annotations
@@ -21,9 +21,10 @@ from typing import Any
 from ..contracts import CandidateAction, Observation, WorkerResult
 
 CLASSIFIER_URL = os.environ.get(
-    "CLASSIFIER_URL", "https://api.classifier.dev/v1/classify"
+    "CLASSIFIER_URL", "https://classifier.dev/v1/classify"
 )
-OPERATIONS = ("click", "type", "select", "scroll", "key", "inspect", "done", "blocked")
+#: Upstream operation head, plus DONE / BLOCKED.
+OPERATIONS = ("click", "type", "select", "scroll", "key", "inspect")
 
 
 class JevWorker:
@@ -31,58 +32,80 @@ class JevWorker:
 
     name = "jev"
 
-    def __init__(self, threshold: float = 0.6, timeout: float = 12.0) -> None:
+    def __init__(self, threshold: float = 0.6, timeout: float = 30.0) -> None:
         self.threshold = threshold
         self.timeout = timeout
         self.calls = 0
         self.latencies: list[float] = []
         self.last_confidence: float | None = None
-        self.last_labels: list[str] = []
+        self.last_labels: dict[str, list[str]] = {}
 
-    # -- candidate framing -------------------------------------------------
+    # -- faithful candidate framing ---------------------------------------
     def candidates(self, obs: Observation) -> dict[str, list[str]]:
-        """Upstream-shaped candidate heads: operation, then per-operation target."""
-        ops = ["done"] if obs.structured_state.get("goal_satisfied") else []
-        ops = [*OPERATIONS[:6], *ops, "blocked"]
-        targets = {f"{op}_target": [t.id for t in obs.targets] for op in OPERATIONS[:6]}
+        ops = list(OPERATIONS) + ["done", "blocked"]
+        targets = {f"{op}_target": [t.id for t in obs.targets] for op in OPERATIONS}
         return {"operation": ops, **targets}
 
-    def _ask(self, question: str, labels: list[str], context: str) -> dict[str, float]:
-        payload = json.dumps(
-            {"input": context, "labels": labels, "question": question}
-        ).encode()
+    def _ask(self, question: str, texts: list[str],
+             labels: list[str]) -> list[dict[str, Any]]:
+        """One classifier.dev request; returns per-input result dicts."""
+        body: dict[str, Any] = {"inputs": texts, "labels": labels, "tier": "fast"}
+        if question:
+            body["instructions"] = question
         req = urllib.request.Request(
-            CLASSIFIER_URL, data=payload,
-            headers={"Content-Type": "application/json"}, method="POST",
+            CLASSIFIER_URL, data=json.dumps(body).encode(),
+            headers={"content-type": "application/json", "user-agent": "aur/0.1"},
+            method="POST",
         )
         key = os.environ.get("CLASSIFIER_API_KEY")
         if key:
-            req.add_header("Authorization", f"Bearer {key}")
+            req.add_header("authorization", f"Bearer {key}")
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             data = json.loads(resp.read().decode())
-        scores = data.get("scores") or data.get("labels") or {}
+        results = data.get("results")
+        if isinstance(results, list):
+            return results
+        # Alternate shape: {"scores": {label: score}}
+        scores = data.get("scores") or {}
+        if isinstance(scores, dict):
+            return [{"scores": scores}]
+        return []
+
+    @staticmethod
+    def _normalise(result: dict[str, Any], labels: list[str]) -> dict[str, float]:
+        scores = result.get("scores")
         if isinstance(scores, list):
             return {d.get("label", str(i)): float(d.get("score", 0))
                     for i, d in enumerate(scores)}
-        return {k: float(v) for k, v in scores.items()}
+        if isinstance(scores, dict):
+            return {k: float(v) for k, v in scores.items()}
+        if "label" in result:
+            return {result["label"]: float(result.get("confidence", 1.0))}
+        # one label -> certain
+        return {labels[0]: 1.0} if len(labels) == 1 else {}
 
     def decide(self, obs: Observation, goal: str) -> WorkerResult:
         start = time.perf_counter()
         cands = self.candidates(obs)
         context = json.dumps(
             {"goal": goal, "url": obs.url,
-             "elements": [t.model_dump() for t in obs.targets]},
+             "elements": [{"id": t.id, "kind": t.kind, "label": t.label}
+                          for t in obs.targets]},
             default=str,
-        )[:4000]
+        )[:6000]
         try:
-            op_scores = self._ask("which operation", cands["operation"], context)
+            # Question 1: which operation.
+            r1 = self._ask("Which single operation advances the goal?",
+                           [context], cands["operation"])
+            if not r1:
+                return self._uncertain(start, "empty operation response")
+            op_scores = self._normalise(r1[0], cands["operation"])
             if not op_scores:
-                return self._uncertain(start, "empty scores")
+                return self._uncertain(start, "no operation scores")
             op = max(op_scores, key=lambda k: op_scores[k])
-            raw = op_scores[op]
             total = sum(max(v, 0.0) for v in op_scores.values()) or 1.0
-            conf = max(raw, 0.0) / total
-            self.last_labels = list(op_scores)
+            conf = max(op_scores[op], 0.0) / total
+            self.last_labels["operation"] = list(op_scores)
 
             if op == "done":
                 return WorkerResult(done=True, confidence=conf, calls=1,
@@ -91,17 +114,21 @@ class JevWorker:
             if op == "blocked" or conf < self.threshold:
                 return self._uncertain(start, f"op={op} conf={conf:.2f}")
 
+            # Question 2: which observed element.
             targets = cands.get(f"{op}_target", [])
             if not targets:
                 return self._uncertain(start, f"no targets for {op}")
             if len(targets) == 1:
                 target, tconf = targets[0], conf
             else:
-                t_scores = self._ask(f"which element to {op}", targets, context)
+                r2 = self._ask(f"Which element should the {op} action address?",
+                               [context], targets)
+                t_scores = self._normalise(r2[0], targets) if r2 else {}
                 if not t_scores:
-                    return self._uncertain(start, "empty target scores")
+                    return self._uncertain(start, "empty target response")
                 target = max(t_scores, key=lambda k: t_scores[k])
                 t_total = sum(max(v, 0.0) for v in t_scores.values()) or 1.0
+                self.last_labels["target"] = list(t_scores)
                 tconf = (max(t_scores[target], 0.0) / t_total) * conf
             if tconf < self.threshold:
                 return self._uncertain(start, f"target conf={tconf:.2f}")

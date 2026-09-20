@@ -167,9 +167,19 @@ def _check_js_rule(obs: Observation, crit: SuccessCriterion) -> tuple[bool, dict
     if isinstance(got, str):
         try:
             import json as _json
-            got = _json.loads(got)
+            parsed = _json.loads(got)
         except Exception:
             return False, {"reason": "js result not JSON", "got": got[:200]}
+    else:
+        parsed = got
+
+    # Microbench mode: the task's own declarative pass rule compares the
+    # recorded finding against the page-recomputed truth.
+    mb = rule.get("microbench_pass_rule")
+    if mb and isinstance(parsed, dict) and "truth" in parsed:
+        return _apply_microbench_pass_rule(mb, parsed.get("truth") or {},
+                                           parsed.get("finding") or {})
+    got = parsed
 
     rule = crit.rule or {}
     expected = rule.get("expected")
@@ -192,6 +202,33 @@ def _check_js_rule(obs: Observation, crit: SuccessCriterion) -> tuple[bool, dict
         return (not problems), {"problems": problems, "got": got, "mode": "fields"}
 
     return False, {"reason": "no expectation given (fail closed)", "got": got}
+
+
+def _apply_microbench_pass_rule(rule: dict[str, Any], truth: dict[str, Any],
+                                finding: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    """Evaluate a microbench `finding_matches_truth` pass rule.
+
+    Mirrors the semantics of microbench's own pass_rule.py: list fields compared
+    as exact sets, presence fields as booleans, and `require_any_of` fails closed
+    on a degenerate (all-empty) measurement.
+    """
+    if rule.get("require_any_of"):
+        if not any(truth.get(f) for f in rule["require_any_of"]):
+            return False, {"reason": "degenerate measurement (require_any_of)",
+                           "truth": truth, "finding": finding}
+    problems: list[str] = []
+    for field in rule.get("fields", []):
+        f = sorted(finding.get(field) or [])
+        t = sorted(truth.get(field) or [])
+        if f != t:
+            problems.append(f"{field}: finding {f} != truth {t}")
+    for field in rule.get("exact_fields", []):
+        if str(finding.get(field, "")).strip() != str(truth.get(field, "")).strip():
+            problems.append(f"{field}: mismatch")
+    for field in rule.get("presence_fields", []):
+        if bool(finding.get(field)) != bool(truth.get(field)):
+            problems.append(f"{field}: presence mismatch")
+    return (not problems), {"problems": problems, "truth": truth, "finding": finding}
 
 
 class JSRuleVerifier:

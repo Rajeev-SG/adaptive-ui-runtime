@@ -234,7 +234,7 @@ class RuntimeConfig(BaseModel):
     max_escalations: int = Field(default=3, ge=0)
     shadow_mode: bool = False
     shadow_sample: float = Field(default=0.0, ge=0, le=1)
-    transports: list[str] = Field(default_factory=lambda: ["relay", "playwriter", "fake"])
+    transports: list[str] = Field(default_factory=lambda: ["isolated", "relay", "playwriter", "fake"])
     #: Fara 9B is excluded from v1 routing by measured evidence (local_cua PR #16).
     allow_fara_9b: bool = False
     #: Use DBOS durable workflow execution when DBOS is available.

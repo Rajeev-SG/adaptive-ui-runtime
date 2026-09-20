@@ -247,11 +247,12 @@ class Engine:
             self.tracer.emit("route", subtask=subtask.id, route=str(decision.route),
                              reason=decision.reason, confidence=decision.confidence)
 
-            if (decision.route in (RouteKind.DETERMINISTIC, RouteKind.STRUCTURED_BROWSER)
-                    and subtask.steps and step_index >= len(subtask.steps)):
+            # Explicit declarative steps are deterministic instructions and run
+            # regardless of which route owns the subtask (a strong-manager-owned
+            # stateful subtask still executes its own structured steps).
+            if subtask.steps and step_index >= len(subtask.steps):
                 proposal = self._proposal([], done=True)  # all steps executed
-            elif (decision.route in (RouteKind.DETERMINISTIC, RouteKind.STRUCTURED_BROWSER)
-                    and subtask.steps):
+            elif subtask.steps:
                 raw = self._resolve_step(subtask.steps[step_index], obs)
                 if raw is None:
                     prior_failures.append(FailureClass.UNEXPECTED_STATE)
@@ -297,8 +298,7 @@ class Engine:
                 actions += 1
                 self.metrics.inc("actions")
                 step_executed = None
-                if subtask.steps and decision.route in (
-                        RouteKind.DETERMINISTIC, RouteKind.STRUCTURED_BROWSER):
+                if subtask.steps:
                     step_executed = step_index
                     step_index += 1
                 result = self._act(action, obs)
@@ -414,30 +414,57 @@ class Engine:
     # -- decision dispatch ------------------------------------------------
     def _decide(self, decision: RouteDecision, subtask: Subtask,
                 obs: Observation) -> Any | None:
-        route = decision.route
-        if route == RouteKind.DETERMINISTIC:
-            return self._deterministic(subtask, obs)
-        if route == RouteKind.STRUCTURED_BROWSER:
-            return self._structured(subtask, obs)
-        if route == RouteKind.JEV and self.config.enable_jev:
-            self.metrics.inc("jev_calls")
-            result = self.jev.decide(obs, subtask.goal)
-            if result.latency_ms:
-                self.metrics.time("jev_ms", result.latency_ms)
-            if not result.proposed and not result.done:
-                self.metrics.inc("fallbacks")
-                return None
-            return result
-        if route == RouteKind.SHOWUI and self.config.enable_showui:
-            self.metrics.inc("showui_calls")
-            return self.showui.propose(obs, subtask.goal,
-                                       subtask.task_class or "visual_grounding")
-        if route == RouteKind.FARA and self.config.enable_fara:
-            self.metrics.inc("fara_calls")
-            return self.fara.propose(obs, subtask.goal,
-                                     subtask.task_class or "visual_grounding")
-        # strong_manager route with no cheap mechanism -> manager decides
-        return self._manager_decision(subtask, obs)
+        """Try the chosen route, then cascade to cheaper alternatives.
+
+        A route that cannot resolve (e.g. structured target absent) must fall
+        through to the next candidate rather than immediately escalating, so a
+        fast route still gets its chance (issue #8/#12).
+        """
+        order = [decision.route]
+        if decision.escalation is not None and decision.escalation not in order:
+            order.append(decision.escalation)
+        # deterministic -> structured -> jev -> visual -> manager
+        for extra in (RouteKind.JEV, RouteKind.SHOWUI, RouteKind.FARA):
+            if extra not in order:
+                order.append(extra)
+
+        for route in order:
+            if route == RouteKind.DETERMINISTIC:
+                proposal = self._deterministic(subtask, obs)
+            elif route == RouteKind.STRUCTURED_BROWSER:
+                proposal = self._structured(subtask, obs)
+            elif route == RouteKind.JEV:
+                if not self.config.enable_jev:
+                    continue
+                self.metrics.inc("jev_calls")
+                result = self.jev.decide(obs, subtask.goal)
+                if result.latency_ms:
+                    self.metrics.time("jev_ms", result.latency_ms)
+                proposal = result if (result.proposed or result.done) else None
+            elif route == RouteKind.SHOWUI:
+                if not self.config.enable_showui:
+                    continue
+                self.metrics.inc("showui_calls")
+                r = self.showui.propose(obs, subtask.goal,
+                                        subtask.task_class or "visual_grounding")
+                proposal = r if (r.proposed or r.done) else None
+            elif route == RouteKind.FARA:
+                if not self.config.enable_fara:
+                    continue
+                self.metrics.inc("fara_calls")
+                r = self.fara.propose(obs, subtask.goal,
+                                      subtask.task_class or "visual_grounding")
+                proposal = r if (r.proposed or r.done) else None
+            else:  # STRONG_MANAGER
+                proposal = self._manager_decision(subtask, obs)
+            if proposal is not None:
+                if route != decision.route:
+                    self.tracer.emit("route_cascade", subtask=subtask.id,
+                                     from_route=str(decision.route),
+                                     to_route=str(route))
+                return proposal
+        self.metrics.inc("fallbacks")
+        return None
 
     def _query_goal(self, subtask: Subtask) -> dict[str, Any]:
         return dict(subtask.budget.__dict__)

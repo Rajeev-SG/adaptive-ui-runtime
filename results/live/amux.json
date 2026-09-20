@@ -1,0 +1,67 @@
+{
+  "transport": "isolated",
+  "reps": 3,
+  "generated_at": "2026-09-20T18:50:40",
+  "arms": {
+    "adaptive": {
+      "verified_success": 3,
+      "reps": 3,
+      "wall_p50_ms": 73.8,
+      "wall_p95_ms": 73.9,
+      "wall_all_ms": [
+        72.6,
+        73.8,
+        73.9
+      ],
+      "failure_classes": {}
+    },
+    "strong_only": {
+      "verified_success": 3,
+      "reps": 3,
+      "wall_p50_ms": 69.3,
+      "wall_p95_ms": 70.3,
+      "wall_all_ms": [
+        70.3,
+        69.3,
+        57.7
+      ],
+      "failure_classes": {}
+    },
+    "no_jev": {
+      "verified_success": 3,
+      "reps": 3,
+      "wall_p50_ms": 73.8,
+      "wall_p95_ms": 75.7,
+      "wall_all_ms": [
+        73.8,
+        75.7,
+        58.3
+      ],
+      "failure_classes": {}
+    },
+    "no_fara": {
+      "verified_success": 3,
+      "reps": 3,
+      "wall_p50_ms": 59.2,
+      "wall_p95_ms": 61.4,
+      "wall_all_ms": [
+        59.2,
+        58.6,
+        61.4
+      ],
+      "failure_classes": {}
+    },
+    "deterministic_only": {
+      "verified_success": 3,
+      "reps": 3,
+      "wall_p50_ms": 68.8,
+      "wall_p95_ms": 78.9,
+      "wall_all_ms": [
+        68.8,
+        64.4,
+        78.9
+      ],
+      "failure_classes": {}
+    }
+  }
+}

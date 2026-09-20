@@ -55,21 +55,22 @@ OBSERVE_JS = r"""
     return 'textbox';
   };
   const out=[];
+  const LIMIT = 45;  // cap the scan so large pages stay under the CLI output limit
   for (const e of document.querySelectorAll(sel)) {
+    if (out.length >= LIMIT) break;
     if (e.type==='password'||e.type==='file'||e.type==='hidden') continue;
     if (!visible(e) || e.matches(':disabled')) continue;
     const r=e.getBoundingClientRect();
     if (r.width<=0||r.height<=0) continue;
     let id = state.ids.get(e); if(!id){ id=state.next++; state.ids.set(e,id); }
     state.nodes.set(id, e);
-    out.push({id: 'n'+id, node: id, kind: role(e), label: name(e),
-              role: e.getAttribute('role')||'', value: (e.value||''),
-              _w: Math.round(r.width), _h: Math.round(r.height)});
+    out.push({id: 'n'+id, node: id, k: role(e), l: name(e).slice(0,48),
+              v: (e.value||'').slice(0,48)});
   }
-  return JSON.stringify({url: location.href, title: document.title,
-    nodes: out.slice(0, 120),
+  return {url: location.href, title: document.title,
+    nodes: out,
     form: {fields: [...document.querySelectorAll('input,textarea,select')]
-      .map(e=>[e.id||e.name||'', e.value||''])}});
+      .map(e=>[e.id||e.name||'', e.value||''])}};
 })()
 """
 
@@ -183,14 +184,22 @@ class CLITransport:
                 raise
         if raw is None:
             raise TransportError("observe failed", "transport_error")
-        if isinstance(raw, str):
-            raw = _decode_jsonish(raw)
+        for _ in range(4):
+            if isinstance(raw, dict):
+                break
+            if isinstance(raw, str):
+                raw = _decode_jsonish(raw)
+            else:
+                break
         if not isinstance(raw, dict):
-            raise TransportError(f"{self.name}: bad observation {raw!r}", "transport_error")
+            raise TransportError(
+                f"{self.name}: bad observation ({len(str(raw))} bytes)",
+                "transport_error")
         targets = [
-            Target(id=n["id"], kind=n.get("kind", "click"), label=n.get("label", ""),
+            Target(id=n["id"], kind=n.get("kind") or n.get("k") or "click",
+                   label=n.get("label") or n.get("l") or "",
                    role=n.get("role", ""), node=int(n.get("node", 0)),
-                   value=str(n.get("value", "")))
+                   value=str(n.get("value") or n.get("v") or ""))
             for n in raw.get("nodes", [])
         ]
         form = raw.get("form", {}) or {}
