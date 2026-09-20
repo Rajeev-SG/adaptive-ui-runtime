@@ -109,9 +109,9 @@ def write_results(results: dict[str, Any], out_dir: Path,
     if results.get("task_class"):
         lines.append(f"- task class: `{results['task_class']}`")
     lines.append("")
-    lines.append("| case | mode | verified | success | wall p50 ms | wall p95 ms | actions | "
-                 "manager | jev | fara | showui | recoveries | loops | failures |")
-    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    lines.append("| case | mode | verified | success | wall min ms | wall median ms | wall max ms | "
+                 "actions | manager | jev | recoveries | loops | failures |")
+    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
     for name, case in results["cases"].items():
         for mode, arm in case["arms"].items():
             def g(k, d=0, _a=arm):
@@ -119,9 +119,9 @@ def write_results(results: dict[str, Any], out_dir: Path,
             rate = arm.get("success_rate", 0.0) or 0.0
             lines.append(
                 f"| {name} | {mode} | {arm.get('verified_success', 0)}/{arm.get('reps', 0)} | "
-                f"{rate:.2f} | {g('wall_p50_ms')} | {g('wall_p95_ms')} | "
+                f"{rate:.2f} | {g('wall_min_ms', g('wall_p50_ms'))} | {g('wall_p50_ms')} | "
+                f"{g('wall_max_ms', g('wall_p95_ms'))} | "
                 f"{g('actions_mean')} | {g('manager_calls_mean')} | {g('jev_calls_mean')} | "
-                f"{g('fara_calls_mean')} | {g('showui_calls_mean')} | "
                 f"{g('recoveries_mean')} | {g('loops_mean')} | "
                 f"{json.dumps(arm.get('failure_classes', {}))} |")
     md_path = out_dir / "RESULTS.md"

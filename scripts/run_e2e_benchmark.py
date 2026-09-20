@@ -189,8 +189,10 @@ def run(transport_name: str, reps: int) -> dict:
             case["arms"][mode] = {
                 "verified_success": wins, "reps": reps,
                 "success_rate": round(wins / reps, 3),
+                "wall_min_ms": round(o[0], 1),
                 "wall_p50_ms": round(o[len(o) // 2], 1),
-                "wall_p95_ms": round(o[min(len(o) - 1, int(len(o) * 0.95))], 1),
+                "wall_max_ms": round(o[-1], 1),
+                "wall_all_ms": [round(w, 1) for w in walls],
                 "actions_mean": round(acc["actions"] / n, 2),
                 "observations_mean": round(acc["observations"] / n, 2),
                 "jev_calls_mean": round(acc["jev_calls"] / n, 2),
