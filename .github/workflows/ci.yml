@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "phase-*", "feat/*", "fix/*"]
+  pull_request:
+
+jobs:
+  test:
+    # Public repo -> must never use a self-hosted runner.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install --python .venv/bin/python -e ".[dev]"
+      - name: Lint
+        run: .venv/bin/ruff check src tests
+      - name: Type check
+        run: .venv/bin/mypy src/adaptive_ui_runtime --ignore-missing-imports
+      - name: Unit tests
+        run: .venv/bin/pytest -q
+        env:
+          AUR_DISABLE_MANAGER: "1"
+          AUR_DURABILITY: "file"
+          AUR_TRANSPORT: "fake"
