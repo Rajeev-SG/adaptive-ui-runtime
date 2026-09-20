@@ -56,6 +56,9 @@
 | under_specified_stateful | no_showui | 5/5 | 1909.8 | 1945.4 | 3997.1 | 1.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
 | under_specified_stateful | deterministic_only | 0/5 | 12.6 | 13.3 | 15.2 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
 
+- Each rep runs under a hard wall bound; the per-arm `infra_timeouts` field is 0
+  (a provider stall is classified, not folded into min/median/max as task latency).
+
 Raw machine-readable data: `results/e2e/benchmark.json`.
 
 ## Ablation honesty (self-describing)
