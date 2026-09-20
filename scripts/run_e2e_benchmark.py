@@ -21,7 +21,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from adaptive_ui_runtime.benchmark import git_rev, write_results  # noqa: E402
+from adaptive_ui_runtime.benchmark import (  # noqa: E402
+    code_digest,
+    git_rev,
+    git_tree,
+    write_results,
+)
 from adaptive_ui_runtime.contracts import (  # noqa: E402
     Plan,
     Subtask,
@@ -223,7 +228,8 @@ if __name__ == "__main__":
     ap.add_argument("--reps", type=int, default=3)
     args = ap.parse_args()
     res = run(args.transport, args.reps)
-    jp, mp = write_results(res, ROOT / "results/e2e", commit=res["commit"])
+    jp, mp = write_results(res, ROOT / "results/e2e", commit=res["commit"],
+                           tree=git_tree(ROOT), digest=code_digest(ROOT))
     print("wrote", jp, mp)
     for name, case in res["cases"].items():
         for mode, arm in case["arms"].items():

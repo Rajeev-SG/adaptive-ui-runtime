@@ -30,6 +30,28 @@ def git_rev(path: Path) -> str:
         return "unknown"
 
 
+def git_tree(path: Path) -> str:
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD^{tree}"], cwd=path,
+                              capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def code_digest(path: Path) -> str:
+    """sha256 over the sorted source files — content-addressed provenance that
+    is immune to commit-wrapper churn (the results commit does not change code,
+    so the digest of the reviewed code and the digest recorded here must match).
+    """
+    import hashlib
+    h = hashlib.sha256()
+    src = path / "src"
+    for f in sorted(src.rglob("*.py")):
+        h.update(str(f.relative_to(path)).encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
 def _pct(values: list[float], p: float) -> float | None:
     if not values:
         return None
@@ -95,14 +117,21 @@ def run_suite(cases: list[dict[str, Any]], modes: list[EvaluationMode] | None = 
 
 
 def write_results(results: dict[str, Any], out_dir: Path,
-                  commit: str = "unknown") -> tuple[Path, Path]:
+                  commit: str = "unknown", tree: str = "unknown",
+                  digest: str = "unknown") -> tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
+    results.setdefault("provenance", {})
+    results["provenance"].update({"code_commit": commit, "code_tree": tree,
+                                  "code_digest": digest})
     json_path = out_dir / "benchmark.json"
     json_path.write_text(json.dumps(results, indent=2))
 
     lines = ["# adaptive-ui-runtime benchmark results", ""]
     lines.append(f"- generated: {results['generated_at']}")
-    lines.append(f"- commit: `{commit}`")
+    lines.append(f"- provenance: code commit `{commit}`, code tree `{tree}`, "
+                 f"code digest `{digest}`")
+    lines.append("  (the digest is sha256 over sorted src/**/*.py and is the "
+                 "authoritative, commit-independent link to the reviewed code)")
     lines.append(f"- transport: `{results['transport']}`  reps/arm: {results['reps']}")
     if results.get("python"):
         lines.append(f"- python: {results['python']}  platform: {results.get('platform','')}")
