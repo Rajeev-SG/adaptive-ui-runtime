@@ -103,17 +103,19 @@ Preserve/port the existing `BridgeBrowser` observed-node contract from `jev-test
 
 ### FR7 — Local visual workers
 
-Integrate Fara as a bounded local worker. Start from the proven Fara 4B artifact and consume the Fara 9B evaluation when available.
+Integrate only the local worker tiers supported by measured evidence from `local_cua` PR #16.
 
 **Reuse existing downloaded/cached model artefacts before any model fetch.**
 
-The runtime must support a hierarchy such as:
-- Fara 4B;
-- optional Fara 9B escalation if evidence justifies it;
-- ShowUI/TongUI grounding fallback where evidence justifies it;
-- strong manager.
+v1 policy:
+- **Fara 4B** — grounding and <=2-step bounded autonomous visual micro-jobs;
+- **ShowUI 2B** — preferred cheap local actor/grounder when the planner/router already knows the subgoal;
+- **strong manager + structured DOM/eval path** — stateful, multi-item and live-site workflows;
+- **Fara 9B — excluded from v1.** Do not download/integrate it for this runtime merely as an escalation tier.
 
-Workers may not own an unbounded workflow.
+PR #16 measured 4B and 9B at the same 8/8 grounding, same T1/T2 success, same T3 failure and same 0/6 on the DOM/eval-dependent real-work set, while 9B used substantially more latency/memory. The Stage-3 result is a channel/delegation boundary, not a broad model-capability claim.
+
+Workers may not own an unbounded workflow. Bare Fara must not own workflows requiring DOM/eval truth it cannot observe.
 
 ### FR8 — Independent verification
 
