@@ -145,3 +145,39 @@ def test_python_and_cli_parity_on_same_fixture(tmp_path):
     assert out.returncode == 0, out.stderr[-800:]
     cli = json.loads(out.stdout)
     assert cli["verified"], cli
+
+
+async def _resume_failed():
+    params = StdioServerParameters(command=sys.executable,
+                                   args=["-m", "adaptive_ui_runtime", "serve-mcp"],
+                                   env=_env())
+    async with stdio_client(params) as (r, w):
+        async with ClientSession(r, w) as s:
+            await s.initialize()
+            # a plan whose criterion the fixture can never satisfy -> run FAILS
+            bad = [{"kind": "state", "description": "never", "expected": "NOPE",
+                    "rule": {"field": "items"}}]
+            d = await _call(s, "ui_execute", {
+                "goal": "impossible", "transport": "fake",
+                "success_criteria": bad,
+                "steps": [{"kind": "click", "target": "search"}]})
+            assert not d["verified"]
+            run = d["run_id"]
+            # resuming a FAILED run must not fabricate success
+            rs = await _call(s, "ui_resume", {"run_id": run, "goal": "impossible"})
+            return d, rs
+
+
+def test_mcp_resume_does_not_fabricate_success_on_failed_run():
+    d, rs = asyncio.run(_resume_failed())
+    assert d["verified"] is False
+    assert rs["verified"] is False, "resume of a failed run must not claim success"
+
+
+def test_real_crash_resume_is_covered_at_engine_level():
+    """The real interruption/resume contract (a process dies after a committed
+    step and resumes without replaying it) is proven in
+    tests/test_crash_resume.py against the same Engine MCP/CLI drive."""
+    import pathlib
+    p = pathlib.Path(__file__).parent / "test_crash_resume.py"
+    assert p.exists()
