@@ -36,8 +36,17 @@ from adaptive_ui_runtime.transports.isolated import FaultInjectingIsolatedTransp
 
 
 def _make_case_transport(transport_name: str, case_name: str):
-    """Use the test-only fault-injecting transport for the recovery case."""
-    if case_name.startswith("recovery_injected") and transport_name == "isolated":
+    """Use the test-only fault-injecting transport for the recovery case.
+
+    The recovery case REQUIRES fault injection; refuse to run it on a transport
+    that cannot inject rather than silently reporting a non-recovery as recovery.
+    """
+    if case_name.startswith("recovery_injected"):
+        if transport_name != "isolated":
+            raise SystemExit(
+                f"recovery_injected requires the isolated transport (fault "
+                f"injection is test-only); got {transport_name!r}. Refusing to "
+                f"report a non-injected run as recovery.")
         return FaultInjectingIsolatedTransport()
     return make_transport(transport_name)
 
@@ -153,7 +162,7 @@ def run(transport_name: str, reps: int) -> dict:
         for mode in ARM_NAMES:
             walls, wins, fails = [], 0, {}
             acc = {"actions": 0, "observations": 0, "jev_calls": 0, "manager_calls": 0,
-                   "recoveries": 0, "loops": 0}
+                   "fara_calls": 0, "showui_calls": 0, "recoveries": 0, "loops": 0}
             for _rep in range(reps):
                 t = _make_case_transport(transport_name, name)
                 if hasattr(t, "reset"):
@@ -196,6 +205,8 @@ def run(transport_name: str, reps: int) -> dict:
                 "actions_mean": round(acc["actions"] / n, 2),
                 "observations_mean": round(acc["observations"] / n, 2),
                 "jev_calls_mean": round(acc["jev_calls"] / n, 2),
+                "fara_calls_mean": round(acc["fara_calls"] / n, 2),
+                "showui_calls_mean": round(acc["showui_calls"] / n, 2),
                 "manager_calls_mean": round(acc["manager_calls"] / n, 2),
                 "recoveries_mean": round(acc["recoveries"] / n, 2),
                 "loops_mean": round(acc["loops"] / n, 2),

@@ -149,3 +149,21 @@ def test_js_rule_plain_string_result_is_compared(tmp_path):
     crit = SuccessCriterion(kind="js_rule", description="d",
                             rule={"js": "x", "expected": "Email supplier"})
     assert Verifier().check([crit], obs).passed
+
+
+def test_recovery_case_refuses_non_injecting_transport():
+    """The recovery case must not silently run as non-recovery on another transport."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "scripts/run_e2e_benchmark.py"
+    spec = importlib.util.spec_from_file_location("e2ebench", p)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["e2ebench"] = mod
+    spec.loader.exec_module(mod)
+    try:
+        mod._make_case_transport("fake", "recovery_injected_stale_target")
+        raised = False
+    except SystemExit:
+        raised = True
+    assert raised, "recovery case must refuse a non-fault-injecting transport"
