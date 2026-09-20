@@ -2,7 +2,7 @@
 
 A fast, accuracy-first execution runtime for browser and UI automation.
 
-The runtime gives coding/agent systems **one interface** for UI work while dynamically choosing the fastest reliable execution path underneath: deterministic browser actions, Jev, Playwriter, Browser Relay, local Fara, visual grounding, or a strong long-context model.
+The runtime gives coding/agent systems **one interface** for UI work while dynamically choosing the fastest reliable execution path underneath: deterministic browser actions, Jev, Playwriter, Browser Relay, local Fara/ShowUI visual workers, or a strong long-context model.
 
 ## Build strategy: compose, do not rebuild
 
@@ -109,7 +109,7 @@ Control plane      typed plans / state / budgets / policy
 Durability         DBOS (subject to implementation validation)
 Manager            strong long-context model via Pydantic AI
 Fast routing       Jev / classifier.dev-compatible path
-Visual workers     Fara 4B, optional 9B escalation, ShowUI/TongUI where justified
+Visual workers     Fara 4B bounded micro-jobs; ShowUI 2B actor/grounder
 Browser layer      existing BridgeBrowser contract
 Transports         Playwriter, Browser Relay, Stagehand, Browser Harness
 Verification       DOM/state/file/url/API/screenshot invariants
@@ -131,7 +131,7 @@ See:
 Do not rerun foundational work merely to rediscover it.
 
 - `Rajeev-SG/jev-tests`: Jev browser routing / live fast-path results and `BridgeBrowser`.
-- `Rajeev-SG/local_cua`: local Fara / ShowUI / TongUI / UGround screening and the Fara 9B delegation-frontier work.
+- `Rajeev-SG/local_cua`: local Fara / ShowUI / TongUI / UGround screening plus merged PR #16. PR #16 rejects Fara 9B as a v1 tier: 4B and 9B matched on grounding/T1/T2/T3, both failed the DOM/eval-dependent real-work set, while 9B was far slower/heavier. Use Fara 4B for bounded <=2-step visual work, ShowUI 2B as a cheap actor when the subgoal is known, and escalate stateful/live-site work to the strong planner/structured DOM loop.
 - `Rajeev-SG/web-automation-microbench`: canonical real-work task/reset/verifier corpus.
 
 These repos are evidence and reusable inputs. This repo owns the **integrated runtime**, not duplicate implementations.
