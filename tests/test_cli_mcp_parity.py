@@ -51,3 +51,12 @@ def test_same_fixture_python_and_runtime_agree(tmp_path):
     res = rt.execute(TaskRequest(goal="g", success_criteria=[crit]),
                      plan=Plan(goal="g", subtasks=[st]))
     assert res.verified
+
+
+def test_cli_run_id_arity(capsys):
+    # missing run id must be a clean JSON error + exit 2, not a traceback
+    assert main(["status"]) == 2
+    assert main(["trace"]) == 2
+    assert main(["status", "a", "b"]) == 2
+    captured = capsys.readouterr()
+    assert "run_id" in captured.err

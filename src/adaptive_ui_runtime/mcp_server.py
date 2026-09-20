@@ -11,6 +11,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from .contracts import (
+    EvaluationMode,
     RuntimeConfig,
     SuccessCriterion,
     TaskRequest,
@@ -21,7 +22,9 @@ mcp = MCPServer("adaptive-ui-runtime")
 
 
 def _rt(transport: str | None = None, mode: str = "adaptive") -> Runtime:
-    return Runtime(RuntimeConfig(mode=mode), transport=transport)
+    cfg = RuntimeConfig()
+    cfg.mode = mode  # type: ignore[assignment]
+    return Runtime(cfg, transport=transport)
 
 
 def _criteria(raw: list[dict[str, Any]] | None) -> list[SuccessCriterion]:
@@ -116,7 +119,9 @@ def ui_evaluate(goal: str, modes: list[str] | None = None,
         plan = Plan(goal=goal, subtasks=[Subtask(
             id="s1", goal=goal, success_criteria=request.success_criteria,
             task_class=task_class, steps=steps)], rationale="mcp-provided steps")
-    return _rt(transport).evaluate(request, modes or ["adaptive"], plan=plan, reps=reps)
+    from typing import cast
+    chosen = cast(list[EvaluationMode], modes or ["adaptive"])
+    return _rt(transport).evaluate(request, chosen, plan=plan, reps=reps)
 
 
 @mcp.tool()

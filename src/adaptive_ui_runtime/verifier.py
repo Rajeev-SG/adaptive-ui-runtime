@@ -171,7 +171,8 @@ def _check_js_rule(obs: Observation, crit: SuccessCriterion) -> tuple[bool, dict
         except Exception:
             return False, {"reason": "js result not JSON", "got": got[:200]}
 
-    expected = crit.rule.get("expected") if crit.rule else None
+    rule = crit.rule or {}
+    expected = rule.get("expected")
     if expected is not None:
         return got == expected, {"got": got, "expected": expected, "mode": "exact"}
 
@@ -262,8 +263,9 @@ class Verifier:
             extra: dict[str, Any] = {}
             extra["js_rule_ran"] = True
             for c in js_rules:
+                rule = c.rule or {}
                 try:
-                    extra["js_result"] = self.transport.evaluate(c.rule["js"])
+                    extra["js_result"] = self.transport.evaluate(rule["js"])
                 except Exception as exc:
                     extra["js_result"] = None
                     extra["js_error"] = str(exc)

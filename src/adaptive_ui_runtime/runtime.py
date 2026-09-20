@@ -63,7 +63,7 @@ class Runtime:
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         engine = self._engine(transport)
         if plan is not None:
-            engine.manager._fallback_plan = lambda r: plan
+            engine.manager.override_plan = plan
         result = engine.execute(request, run_id=run_id)
         return result
 
@@ -124,7 +124,7 @@ class Runtime:
                                  metrics=state.metrics,
                                  failure_class=state.failure_class)
             engine = self._engine(transport)
-            engine.manager._fallback_plan = lambda r: Plan(
+            engine.manager.override_plan = Plan(
                 goal=state.goal, subtasks=remaining, rationale="resume")
             return engine.execute(req, run_id=run_id)
         engine = self._engine(transport)

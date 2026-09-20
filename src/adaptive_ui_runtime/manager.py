@@ -54,6 +54,8 @@ class Manager:
 
     def __init__(self, model: str | None = None) -> None:
         self.model_name = model or DEFAULT_MODEL
+        #: Explicit plan supplied by a caller (CLI/MCP/eval); bypasses planning.
+        self.override_plan: Plan | None = None
         self.calls = 0
         self.input_tokens = 0
         self.output_tokens = 0
@@ -79,6 +81,8 @@ class Manager:
 
     # -- planning ---------------------------------------------------------
     def plan(self, request: TaskRequest, prior: list[str] | None = None) -> Plan:
+        if self.override_plan is not None:
+            return self.override_plan
         if not _manager_available():
             return self._fallback_plan(request)
         try:

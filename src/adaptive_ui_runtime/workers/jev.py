@@ -78,7 +78,7 @@ class JevWorker:
             op_scores = self._ask("which operation", cands["operation"], context)
             if not op_scores:
                 return self._uncertain(start, "empty scores")
-            op = max(op_scores, key=op_scores.get)
+            op = max(op_scores, key=lambda k: op_scores[k])
             raw = op_scores[op]
             total = sum(max(v, 0.0) for v in op_scores.values()) or 1.0
             conf = max(raw, 0.0) / total
@@ -100,7 +100,7 @@ class JevWorker:
                 t_scores = self._ask(f"which element to {op}", targets, context)
                 if not t_scores:
                     return self._uncertain(start, "empty target scores")
-                target = max(t_scores, key=t_scores.get)
+                target = max(t_scores, key=lambda k: t_scores[k])
                 t_total = sum(max(v, 0.0) for v in t_scores.values()) or 1.0
                 tconf = (max(t_scores[target], 0.0) / t_total) * conf
             if tconf < self.threshold:

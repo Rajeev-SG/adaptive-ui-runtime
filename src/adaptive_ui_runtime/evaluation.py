@@ -36,7 +36,7 @@ def run_arm(mode: EvaluationMode, request: TaskRequest, plan: Plan | None,
     transport = make_transport(transport_name, url=request.start_url)
     engine = Engine(transport, config=cfg, store=store)
     if plan is not None:
-        engine.manager._fallback_plan = lambda r: plan
+        engine.manager.override_plan = plan
     if mode == "strong_only":
         # force structured/manager ownership rather than jev/visual routes
         engine.config.enable_jev = False

@@ -75,6 +75,12 @@ def _dispatch(cmd: str, opts: dict, transport: str | None) -> int:
         _print(Runtime(transport=transport).verify(request.success_criteria))
         return 0
 
+    if cmd in ("status", "trace", "resume"):
+        if len(opts["_pos"]) != 1:
+            print(json.dumps({"error": f"{cmd} requires exactly one run_id"}),
+                  file=sys.stderr)
+            return 2
+
     if cmd == "status":
         _print(Runtime(transport=transport).status(opts["_pos"][0]))
         return 0

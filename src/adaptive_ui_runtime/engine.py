@@ -64,7 +64,7 @@ class Engine:
         self.jev = JevWorker(threshold=self.config.jev_confidence_threshold)
         self.fara = LocalVisualWorker(kind="fara")
         self.showui = LocalVisualWorker(kind="showui")
-        self.tracer: Tracer | None = None
+        self.tracer: Tracer = Tracer('unstarted')
         self.metrics = Metrics()
         self._last_plan: Plan | None = None
 
@@ -82,7 +82,11 @@ class Engine:
         self.store.save(state)
 
         plan = self.manager.plan(request)
-        if not self.config.enable_strong_manager and plan.manager_calls == 0:
+        # A caller-supplied plan must never be replaced. Only synthesize a
+        # deterministic fallback when no plan was provided at all.
+        if (self.manager.override_plan is None
+                and not self.config.enable_strong_manager
+                and plan.manager_calls == 0):
             plan = self.manager._fallback_plan(request)
         self._last_plan = plan
         state.plan = plan
@@ -168,8 +172,7 @@ class Engine:
                 proposal = self._proposal([], done=True)  # all steps executed
             elif (decision.route in (RouteKind.DETERMINISTIC, RouteKind.STRUCTURED_BROWSER)
                     and subtask.steps):
-                raw = subtask.steps[step_index]
-                raw = self._resolve_step(raw, obs)
+                raw = self._resolve_step(subtask.steps[step_index], obs)
                 if raw is None:
                     prior_failures.append(FailureClass.UNEXPECTED_STATE)
                     escalations += 1

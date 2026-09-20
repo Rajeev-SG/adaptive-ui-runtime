@@ -29,7 +29,7 @@ class Tracer:
         self._seq = 0
         self._t0 = time.perf_counter()
         self._lock = threading.Lock()
-        self._otel_span = None
+        self._otel_span: Any = None
         self.otel_enabled = bool(
             enable_otel if enable_otel is not None
             else os.environ.get("AUR_OTEL", "0") == "1"

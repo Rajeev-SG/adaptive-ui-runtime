@@ -11,7 +11,7 @@ import os
 
 from ..contracts import ActionResult
 from .base import TransportError
-from .cli import _decode_jsonish
+from .cli import CLITransport, _decode_jsonish
 
 #: Some subcommands (evaluate/screenshot) are not universal; advertise honestly.
 DEFAULT_CAPS = frozenset(
@@ -20,8 +20,7 @@ DEFAULT_CAPS = frozenset(
 )
 
 
-class RelayTransport(__import__("adaptive_ui_runtime.transports.cli",
-                               fromlist=["CLITransport"]).CLITransport):
+class RelayTransport(CLITransport):
     name = "relay"
     capabilities = DEFAULT_CAPS
     bin_env = "RELAY_BIN"
