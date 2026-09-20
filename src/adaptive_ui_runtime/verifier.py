@@ -169,7 +169,9 @@ def _check_js_rule(obs: Observation, crit: SuccessCriterion) -> tuple[bool, dict
             import json as _json
             parsed = _json.loads(got)
         except Exception:
-            return False, {"reason": "js result not JSON", "got": got[:200]}
+            # A plain (non-JSON) string result is a legitimate fact; compare it
+            # directly rather than failing closed on the parse.
+            parsed = got
     else:
         parsed = got
 

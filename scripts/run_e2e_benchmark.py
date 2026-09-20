@@ -32,6 +32,14 @@ from adaptive_ui_runtime.durability import FileRunStore  # noqa: E402
 from adaptive_ui_runtime.engine import Engine  # noqa: E402
 from adaptive_ui_runtime.evaluation import MODES  # noqa: E402
 from adaptive_ui_runtime.runtime import make_transport  # noqa: E402
+from adaptive_ui_runtime.transports.isolated import FaultInjectingIsolatedTransport  # noqa: E402
+
+
+def _make_case_transport(transport_name: str, case_name: str):
+    """Use the test-only fault-injecting transport for the recovery case."""
+    if case_name.startswith("recovery_injected") and transport_name == "isolated":
+        return FaultInjectingIsolatedTransport()
+    return make_transport(transport_name)
 
 TODO = "https://demo.playwright.dev/todomvc/#/"
 SAVED_JS = ("JSON.stringify(JSON.parse(localStorage.getItem('react-todos')||'[]')"
@@ -95,11 +103,40 @@ def _recovery_subtask():
     return c, st, "deterministic_dom"
 
 
+def _jev_choice_subtask():
+    """No explicit steps: a single finite-choice decision (which operation, which
+    element) is required. Success = the input holds the typed value, which one
+    correctly-routed action achieves. Jev-capable arms invoke Jev here."""
+    c = SuccessCriterion(
+        kind="js_rule", description="new-todo input holds the typed value",
+        rule={"js": "(document.querySelector('.new-todo')||{}).value || ''",
+              "expected": "Email supplier"})
+    st = Subtask(id="s1", goal="type 'Email supplier' into the search field",
+                 success_criteria=[c], task_class="deterministic_dom", steps=[])
+    return c, st, "finite_choice_no_steps"
+
+
+def _manager_owned_subtask():
+    """Under-specified, no explicit steps, but a single bounded action: the
+    strong manager (or an escalating cheap route) must choose the action. Success
+    is one correct manager decision, so the manager axis is what the arms differ
+    on (manager-enabled arms pass; deterministic_only has no manager)."""
+    c = SuccessCriterion(
+        kind="js_rule", description="new-todo input holds the typed value",
+        rule={"js": "(document.querySelector('.new-todo')||{}).value || ''",
+              "expected": "manager call"})
+    st = Subtask(id="s1", goal="type the text 'manager call' into the todo input",
+                 success_criteria=[c], task_class="stateful_dom_eval", steps=[])
+    return c, st, "under_specified_single_action"
+
+
 CASES = [
     ("deterministic_dom_two_todos", _two_todos_subtask),
     ("multi_step_workflow_complete_first", _workflow_subtask),
     ("stateful_dom_eval_structured_owned", _stateful_subtask),
     ("recovery_injected_stale_target", _recovery_subtask),
+    ("finite_choice_no_steps", _jev_choice_subtask),
+    ("under_specified_stateful", _manager_owned_subtask),
 ]
 
 
@@ -118,7 +155,7 @@ def run(transport_name: str, reps: int) -> dict:
             acc = {"actions": 0, "observations": 0, "jev_calls": 0, "manager_calls": 0,
                    "recoveries": 0, "loops": 0}
             for _rep in range(reps):
-                t = make_transport(transport_name)
+                t = _make_case_transport(transport_name, name)
                 if hasattr(t, "reset"):
                     t.reset(TODO)
                 else:
@@ -127,10 +164,15 @@ def run(transport_name: str, reps: int) -> dict:
                 cfg.durable = False
                 e = Engine(t, config=cfg, store=FileRunStore())
                 e.manager.override_plan = Plan(goal="g", subtasks=[st])
-                if name.startswith("recovery_injected") and hasattr(t, "fail_next"):
-                    t.fail_next = "stale"  # one-shot injected stale-target failure
+                injected = False
+                if name.startswith("recovery_injected"):
+                    assert isinstance(t, FaultInjectingIsolatedTransport), (
+                        "recovery case requires a fault-injecting transport")
+                    t.fail_next = "stale"
+                    injected = True
                 start = time.perf_counter()
-                r = e.execute(TaskRequest(goal="g", success_criteria=[crit], start_url=TODO))
+                r = e.execute(TaskRequest(goal=st.goal, success_criteria=[crit],
+                                          start_url=TODO))
                 walls.append((time.perf_counter() - start) * 1000.0)
                 if r.verified:
                     wins += 1
@@ -138,6 +180,9 @@ def run(transport_name: str, reps: int) -> dict:
                     fails[str(r.failure_class)] = fails.get(str(r.failure_class), 0) + 1
                 for k in acc:
                     acc[k] += r.metrics.get(k, 0) or 0
+                if injected:
+                    assert r.metrics.get("recoveries", 0) >= 1, (
+                        "injected recovery did not fire")
                 t.close()
             o = sorted(walls)
             n = max(1, reps)

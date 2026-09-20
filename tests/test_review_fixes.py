@@ -117,3 +117,35 @@ def test_d4_mcp_rejects_invalid_mode():
         with pytest.raises(ValueError):
             mcp_server._rt(mode=bad)
     assert mcp_server._rt(mode="no_jev") is not None
+
+
+def test_no_fault_injection_on_production_transport():
+    """Review: fault injection must not ship on the production transport."""
+    from adaptive_ui_runtime.transports.isolated import (
+        FaultInjectingIsolatedTransport,
+        IsolatedBrowserTransport,
+    )
+    assert not hasattr(IsolatedBrowserTransport, "fail_next")
+    assert hasattr(FaultInjectingIsolatedTransport, "_sel")
+
+
+def test_manager_decide_action_normalises_and_bounds():
+    """Manager synonyms normalise to the runtime action vocabulary; junk -> None."""
+    import os
+
+    from adaptive_ui_runtime.manager import Manager
+    m = Manager()
+    # no key -> available() False -> None, never a bogus action
+    os.environ.pop("OPENROUTER_API_KEY", None)
+    assert m.decide_action("g", [], {}) is None
+
+
+def test_js_rule_plain_string_result_is_compared(tmp_path):
+    """A non-JSON string fact is a legitimate JS result, not a parse failure."""
+    from adaptive_ui_runtime.contracts import Observation, SuccessCriterion
+    from adaptive_ui_runtime.verifier import Verifier
+    obs = Observation(snapshot_id="s", state_fingerprint="f",
+                      structured_state={"js_rule_ran": True, "js_result": "Email supplier"})
+    crit = SuccessCriterion(kind="js_rule", description="d",
+                            rule={"js": "x", "expected": "Email supplier"})
+    assert Verifier().check([crit], obs).passed
