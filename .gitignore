@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+.env
+.env.*
+!.env.example
+results/raw/
+traces/
+artifacts/private/
+*.har
+*.trace
+.DS_Store
