@@ -217,4 +217,5 @@ if __name__ == "__main__":
     for name, case in res["cases"].items():
         for mode, arm in case["arms"].items():
             print(f"{name:34s} {mode:20s} {arm['verified_success']}/{arm['reps']} "
-                  f"p50={arm['wall_p50_ms']}ms p95={arm['wall_p95_ms']}ms")
+                  f"median={arm['wall_p50_ms']}ms min={arm.get('wall_min_ms')} "
+                  f"max={arm.get('wall_max_ms')}")
