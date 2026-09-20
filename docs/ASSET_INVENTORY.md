@@ -16,8 +16,8 @@ Do not commit secrets, private page/session content or credentials.
 | BridgeBrowser | `Rajeev-SG/jev-tests` | TBD | TBD | TBD | reuse/port thinly |
 | Jev model/API client | existing Jev/classifier.dev setup | TBD | TBD | TBD | reuse existing credentials/config |
 | Fara 4B artifact | asset used by `local_cua` | TBD/cache | exact artifact from results | TBD | **do not redownload if cached** |
-| Fara 9B artifact | `local_cua#15` result/cache | TBD/cache | TBD | TBD | use only if benchmark justifies |
-| ShowUI/TongUI artifacts | assets used by `local_cua` | TBD/cache | TBD | TBD | optional only |
+| Fara 9B artifact | `local_cua` PR #16 benchmark provenance only | TBD/cache if already present | `mlx-community/Fara1.5-9B-8bit` | not required for v1 | **do not download/integrate; locate only if already cached** |
+| ShowUI/TongUI artifacts | assets used by `local_cua` | TBD/cache | exact local_cua revisions | TBD | ShowUI 2B is the preferred local actor candidate; TongUI optional only |
 | local CUA adapters | `Rajeev-SG/local_cua` | TBD | TBD | TBD | reuse |
 | benchmark task corpus | `Rajeev-SG/web-automation-microbench` | TBD | TBD | TBD | consume, do not fork |
 | Playwriter | existing local install/setup | TBD | TBD | TBD | reuse |
