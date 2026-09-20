@@ -1,4 +1,5 @@
 """Microbench consumption + pass-rule parity (issue #15)."""
+import pytest
 
 from adaptive_ui_runtime.contracts import Observation, SuccessCriterion
 from adaptive_ui_runtime.microbench import build, list_tasks
