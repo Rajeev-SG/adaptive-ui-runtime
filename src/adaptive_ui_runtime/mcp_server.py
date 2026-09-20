@@ -6,7 +6,7 @@ run the same code path.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from mcp.server.mcpserver import MCPServer
 
@@ -21,9 +21,17 @@ from .runtime import Runtime
 mcp = MCPServer("adaptive-ui-runtime")
 
 
+VALID_MODES: frozenset[str] = frozenset(
+    {"adaptive", "strong_only", "no_jev", "no_fara", "no_showui", "deterministic_only"}
+)
+
+
 def _rt(transport: str | None = None, mode: str = "adaptive") -> Runtime:
-    cfg = RuntimeConfig()
-    cfg.mode = mode  # type: ignore[assignment]
+    if mode not in VALID_MODES:
+        raise ValueError(
+            f"invalid mode {mode!r}; expected one of {sorted(VALID_MODES)}")
+    # Validated construction: Pydantic enforces the Literal at the contract layer.
+    cfg = RuntimeConfig(mode=cast(EvaluationMode, mode))
     return Runtime(cfg, transport=transport)
 
 
@@ -119,8 +127,12 @@ def ui_evaluate(goal: str, modes: list[str] | None = None,
         plan = Plan(goal=goal, subtasks=[Subtask(
             id="s1", goal=goal, success_criteria=request.success_criteria,
             task_class=task_class, steps=steps)], rationale="mcp-provided steps")
-    from typing import cast
-    chosen = cast(list[EvaluationMode], modes or ["adaptive"])
+    chosen: list[EvaluationMode] = []
+    for m in (modes or ["adaptive"]):
+        if m not in VALID_MODES:
+            raise ValueError(
+                f"invalid mode {m!r}; expected one of {sorted(VALID_MODES)}")
+        chosen.append(cast(EvaluationMode, m))
     return _rt(transport).evaluate(request, chosen, plan=plan, reps=reps)
 
 

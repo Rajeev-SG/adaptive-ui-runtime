@@ -15,7 +15,14 @@ import os
 from typing import Any
 
 #: run_id -> Engine, so a DBOS recovery replay can reach the live engine.
+#: Entries are evicted as soon as the workflow settles (see _settle) so a
+#: long-lived MCP process does not retain engines or their browser handles.
 RUN_REGISTRY: dict[str, Any] = {}
+
+
+def _settle(run_id: str) -> None:
+    """Drop the engine reference for a finished run (no resource leak)."""
+    RUN_REGISTRY.pop(run_id, None)
 
 _DBOS_ACTIVE = False
 
@@ -38,6 +45,9 @@ def _build_workflow():
 
     @DBOS.workflow()
     def aur_run(run_id: str, request_json: str, plan_json: str | None) -> dict[str, Any]:
+        # The workflow body is engine-independent: it looks the engine up by
+        # run_id at execution time, so a recovery replay uses whatever engine
+        # this process registered rather than a captured instance.
         engine = RUN_REGISTRY[run_id]
         return engine.execute_durable_body(run_id, request_json, plan_json)
 
@@ -52,7 +62,20 @@ def step(fn):
         return fn
     from dbos import DBOS
 
-    return DBOS.step()(fn)
+    return DBOS.step(name=f"aur_step_{getattr(fn, '__name__', 'fn')}")(fn)
+
+
+#: Module-level step so DBOS journal matching never depends on a per-invocation
+#: closure identity, and concurrent runs in one process cannot collide.
+def run_subtask_step(run_id: str, subtask_json: str, prior_json: str) -> dict[str, Any]:
+    """Execute one subtask against the engine registered for `run_id`."""
+    engine = RUN_REGISTRY[run_id]
+    return engine._run_subtask(
+        __import__("adaptive_ui_runtime.contracts", fromlist=["Subtask"])
+        .Subtask.model_validate_json(subtask_json),
+        engine._active_request,
+        __import__("json").loads(prior_json),
+    )
 
 
 def start(run_id: str, engine: Any, request_json: str,
@@ -64,9 +87,12 @@ def start(run_id: str, engine: Any, request_json: str,
 
     RUN_REGISTRY[run_id] = engine
     wf = _build_workflow()
-    with SetWorkflowID(run_id):
-        handle: Any = DBOS.start_workflow(wf, run_id, request_json, plan_json)
-    return handle.get_result()
+    try:
+        with SetWorkflowID(run_id):
+            handle: Any = DBOS.start_workflow(wf, run_id, request_json, plan_json)
+        return handle.get_result()
+    finally:
+        _settle(run_id)
 
 
 def recover(run_id: str, engine: Any, request_json: str,
@@ -78,8 +104,11 @@ def recover(run_id: str, engine: Any, request_json: str,
 
     RUN_REGISTRY[run_id] = engine
     _build_workflow()
-    handle: Any = DBOS.retrieve_workflow(run_id)
-    return handle.get_result()
+    try:
+        handle: Any = DBOS.retrieve_workflow(run_id)
+        return handle.get_result()
+    finally:
+        _settle(run_id)
 
 
 def workflow_status(run_id: str) -> dict[str, Any] | None:

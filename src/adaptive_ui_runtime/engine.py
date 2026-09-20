@@ -66,6 +66,7 @@ class Engine:
         self.fara = LocalVisualWorker(kind="fara")
         self.showui = LocalVisualWorker(kind="showui")
         self.tracer: Tracer = Tracer('unstarted')
+        self._active_request: TaskRequest | None = None
         self.metrics = Metrics()
         self._last_plan: Plan | None = None
 
@@ -105,7 +106,12 @@ class Engine:
         """
         from . import durable_exec
 
+        # Register this engine for the run so the module-level DBOS step can find
+        # it; evict on completion (D2).
+        durable_exec.RUN_REGISTRY[run_id] = self
+        self._run_id = run_id
         request = TaskRequest.model_validate_json(request_json)
+        self._active_request = request
         self.tracer = Tracer(run_id)
         self.metrics = Metrics()
         state = RunState(run_id=run_id, goal=request.goal, status=RunStatus.RUNNING)
@@ -134,18 +140,23 @@ class Engine:
         replans = 0
         subtasks = list(plan.subtasks)
 
-        @durable_exec.step
-        def run_step(subtask_json: str, prior_json: str) -> dict[str, Any]:
-            st = Subtask.model_validate_json(subtask_json)
-            return self._run_subtask(st, request, json.loads(prior_json))
+        run_step = durable_exec.step(durable_exec.run_subtask_step)
 
         i = 0
         while i < len(subtasks):
             subtask = subtasks[i]
             if not self._dependencies_met(subtask, state):
+                # Record an explicit SKIPPED status (with reason) instead of
+                # silently advancing, so success detection and traces agree.
+                state.subtask_status[subtask.id] = SubtaskStatus.SKIPPED
+                self.tracer.emit("subtask_skipped", subtask=subtask.id,
+                                 reason="dependency not verified",
+                                 depends_on=subtask.depends_on)
+                self._save(state)
                 i += 1
                 continue
-            result = run_step(subtask.model_dump_json(), json.dumps(verified_outcomes))
+            result = run_step(run_id, subtask.model_dump_json(),
+                              json.dumps(verified_outcomes))
             state.subtask_status[subtask.id] = (
                 SubtaskStatus.VERIFIED if result["passed"] else SubtaskStatus.FAILED
             )
@@ -169,23 +180,37 @@ class Engine:
                                                verified_outcomes)
                 self.tracer.emit("manager_replan", attempt=replans,
                                  subtasks=[s.id for s in new_plan.subtasks])
-                remaining = [s for s in new_plan.subtasks
-                             if str(state.subtask_status.get(s.id)) != "verified"]
+                # Rebuild the status map from the NEW plan, carrying over only
+                # VERIFIED results for ids the new plan still contains, so a
+                # replan with fresh ids is not poisoned by stale statuses.
+                carried = {
+                    st.id: SubtaskStatus.VERIFIED
+                    for st in new_plan.subtasks
+                    if str(state.subtask_status.get(st.id)) == "verified"
+                }
+                state.subtask_status = {
+                    st.id: carried.get(st.id, SubtaskStatus.PENDING)
+                    for st in new_plan.subtasks
+                }
+                remaining = [st for st in new_plan.subtasks
+                             if state.subtask_status.get(st.id) != SubtaskStatus.VERIFIED]
                 if remaining:
-                    subtasks = subtasks[:i] + remaining
+                    subtasks = remaining
                     state.plan = new_plan
+                    failure_class = None  # a replan resets first-failure state
+                    i = 0
                     self._save(state)
                     continue
             break
-        else:
-            state.status = RunStatus.SUCCEEDED
 
-        overall_passed = (failure_class is None
-                          and all(str(v) == "verified"
-                                  for v in state.subtask_status.values())
-                          and state.subtask_status == {
-                              s.id: SubtaskStatus.VERIFIED
-                              for s in (state.plan.subtasks if state.plan else [])})
+        # Success is derived from the CURRENT plan, not whole-dict equality.
+        plan_subtasks = state.plan.subtasks if state.plan else []
+        statuses = [state.subtask_status.get(st.id) for st in plan_subtasks]
+        overall_passed = (
+            bool(plan_subtasks)
+            and failure_class is None
+            and all(s == SubtaskStatus.VERIFIED for s in statuses)
+        )
         if overall_passed:
             state.status = RunStatus.SUCCEEDED
         else:
@@ -201,6 +226,7 @@ class Engine:
                          failure_class=state.failure_class,
                          wall_ms=round(wall_ms, 1))
         self.tracer.flush()
+        durable_exec.RUN_REGISTRY.pop(run_id, None)
 
         return RunResult(
             run_id=run_id, status=state.status, verified=overall_passed,
@@ -215,10 +241,21 @@ class Engine:
         return True
 
     def _save(self, state: RunState) -> None:
+        """Persist a checkpoint. A store failure is surfaced (metric + trace +
+        flag on state) rather than silently swallowed, so lost durability is
+        never indistinguishable from success."""
         try:
             self.store.save(state)
-        except Exception:
-            pass
+        except Exception as exc:
+            self.metrics.inc("state_save_failures")
+            state.metrics["state_save_failed"] = True
+            state.metrics["state_save_error"] = f"{exc.__class__.__name__}: {exc}"
+            if self.tracer is not None:
+                try:
+                    self.tracer.emit("state_save_failed",
+                                     error=f"{exc.__class__.__name__}: {exc}")
+                except Exception:
+                    pass
 
     # -- subtask loop -----------------------------------------------------
     def _run_subtask(self, subtask: Subtask, request: TaskRequest,
