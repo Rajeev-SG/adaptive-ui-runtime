@@ -13,8 +13,23 @@ Priority order is strict:
 1. **Accuracy / verified success**
 2. **Speed / end-to-end wall time**
 3. **Cost / paid inference avoided**
+4. **Implementation speed through reuse**
 
 A cheaper route must not be selected if benchmark evidence shows materially worse verified success.
+
+## FR0 — mandatory reuse-first preflight
+
+Before implementation of any subsystem, the agent must:
+
+1. inventory equivalent assets already present locally;
+2. inspect the related repos (`jev-tests`, `local_cua`, `web-automation-microbench`);
+3. inspect mature upstream OSS;
+4. prefer reuse/adaptation/dependency over copied or bespoke implementation;
+5. record any unavoidable gap before writing replacement functionality.
+
+The runtime project must not trigger duplicate model/browser/repository downloads when an equivalent usable local asset already exists.
+
+Development may use local paths/caches; reproducible remote provenance/version pins must still be recorded for clean installs.
 
 ## Functional requirements
 
@@ -90,6 +105,8 @@ Preserve/port the existing `BridgeBrowser` observed-node contract from `jev-test
 
 Integrate Fara as a bounded local worker. Start from the proven Fara 4B artifact and consume the Fara 9B evaluation when available.
 
+**Reuse existing downloaded/cached model artefacts before any model fetch.**
+
 The runtime must support a hierarchy such as:
 - Fara 4B;
 - optional Fara 9B escalation if evidence justifies it;
@@ -128,6 +145,8 @@ Classify and handle at least:
 
 Each recovery path has a fixed budget. Generic blind retries are forbidden.
 
+**Recovery should invoke existing transport/Stagehand/Browser Harness/worker capabilities wherever possible rather than implementing a separate browser-healing framework.**
+
 ### FR10 — Cycle detection
 
 Fingerprint material state and recent actions.
@@ -159,7 +178,7 @@ Trace:
 - model/tool usage;
 - failure classes.
 
-OpenTelemetry-compatible output is preferred.
+OpenTelemetry-compatible output is preferred. Do not build a bespoke tracing backend.
 
 ### FR13 — Evaluation and shadow mode
 
@@ -207,7 +226,8 @@ Minimise:
 - repeated screenshots/observations;
 - serial inference where safe;
 - model reload/cold starts;
-- redundant tool hops.
+- redundant tool hops;
+- unnecessary process startup.
 
 Keep useful local models resident where practical.
 
@@ -227,11 +247,33 @@ Models/transports/verifiers are replaceable without changing the agent-facing AP
 
 Benchmark summaries must include exact versions/revisions, model artifacts, settings, task commit, repetitions, verifier and environment.
 
+### NFR7 — Minimal bespoke implementation
+
+The custom implementation should be limited to integration-specific glue and policy.
+
+A substantial new subsystem requires documented evidence that:
+- no suitable local implementation exists;
+- related project code cannot be reused/adapted;
+- no suitable mature OSS exists;
+- a thin wrapper is insufficient.
+
+### NFR8 — No duplicate asset acquisition
+
+Before cloning/downloading/installing:
+- check local repo/worktree presence;
+- check installed tool/package;
+- check model cache;
+- check browser/runtime cache.
+
+When the correct version already exists locally, use it rather than acquiring another copy.
+
 ## v1 acceptance
 
 The runtime must complete an agreed representative microbench subset through the MCP/CLI surface.
 
 Acceptance requires:
+- reuse inventory completed and kept current;
+- no known duplicate foundational implementations;
 - no unbounded action loops;
 - independent verification on every scored task;
 - durable status/resume demonstrated;
