@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "phase-*", "feat/*", "fix/*"]
+    branches: ["main", "phase-*", "feat/*", "fix/*", "chore/*"]
   pull_request:
 
 jobs:
@@ -26,9 +26,11 @@ jobs:
         run: .venv/bin/ruff check src tests
       - name: Type check
         run: .venv/bin/mypy src/adaptive_ui_runtime --ignore-missing-imports
-      - name: Unit tests
-        run: .venv/bin/pytest -q
+      - name: Unit tests (fake transport; DBOS workflow exercised)
+        run: .venv/bin/pytest -q --ignore=tests/test_live_browser_smoke.py
         env:
-          AUR_DISABLE_MANAGER: "1"
-          AUR_DURABILITY: "file"
           AUR_TRANSPORT: "fake"
+      - name: Live browser smoke (real DOM end to end)
+        run: |
+          .venv/bin/playwright install --with-deps chromium
+          .venv/bin/pytest -q tests/test_live_browser_smoke.py

@@ -12,6 +12,7 @@ proposal. No unbounded loops.
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from typing import Any
@@ -69,21 +70,54 @@ class Engine:
         self._last_plan: Plan | None = None
 
     # -- public API -------------------------------------------------------
-    def execute(self, request: TaskRequest, run_id: str | None = None) -> RunResult:
+    def execute(self, request: TaskRequest, run_id: str | None = None,
+                durable: bool | None = None) -> RunResult:
+        """Execute end to end.
+
+        Runs as a DBOS workflow when DBOS is active so an interruption resumes
+        from the last completed subtask step without replaying it. Falls back to
+        a direct call otherwise (`durability` reports which was used).
+        """
         run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
+        use_durable = durable if durable is not None else self.config.durable
+        if use_durable:
+            from . import durable_exec
+            result = durable_exec.start(
+                run_id, self, request.model_dump_json(),
+                self.manager.override_plan.model_dump_json()
+                if self.manager.override_plan else None,
+            )
+        else:
+            result = self.execute_durable_body(
+                run_id, request.model_dump_json(),
+                self.manager.override_plan.model_dump_json()
+                if self.manager.override_plan else None,
+            )
+        return RunResult.model_validate(result)
+
+    def execute_durable_body(self, run_id: str, request_json: str,
+                             plan_json: str | None) -> dict[str, Any]:
+        """Durable body: the same code path whether or not DBOS is active.
+
+        Recovered runs replay committed steps; each subtask's side effects are
+        a single DBOS step, so a completed state-changing subtask is never
+        re-executed after a crash.
+        """
+        from . import durable_exec
+
+        request = TaskRequest.model_validate_json(request_json)
         self.tracer = Tracer(run_id)
         self.metrics = Metrics()
         state = RunState(run_id=run_id, goal=request.goal, status=RunStatus.RUNNING)
         start = time.perf_counter()
-        self.tracer.emit("run_start", goal=request.goal, mode=self.config.mode)
+        self.tracer.emit("run_start", goal=request.goal, mode=self.config.mode,
+                         durability="dbos" if durable_exec.dbos_active() else "file")
 
         if request.start_url and self.transport.supports("navigate"):
             self.transport.navigate(request.start_url)
-        self.store.save(state)
+        self._save(state)
 
         plan = self.manager.plan(request)
-        # A caller-supplied plan must never be replaced. Only synthesize a
-        # deterministic fallback when no plan was provided at all.
         if (self.manager.override_plan is None
                 and not self.config.enable_strong_manager
                 and plan.manager_calls == 0):
@@ -93,52 +127,98 @@ class Engine:
         state.subtask_status = {s.id: SubtaskStatus.PENDING for s in plan.subtasks}
         self.tracer.emit("plan", subtasks=[s.id for s in plan.subtasks],
                          rationale=plan.rationale)
-        self.store.save(state)
+        self._save(state)
 
         verified_outcomes: list[str] = []
-        overall_passed = True
         failure_class: str | None = None
+        replans = 0
+        subtasks = list(plan.subtasks)
 
-        for subtask in plan.subtasks:
-            result = self._run_subtask(subtask, request, verified_outcomes)
+        @durable_exec.step
+        def run_step(subtask_json: str, prior_json: str) -> dict[str, Any]:
+            st = Subtask.model_validate_json(subtask_json)
+            return self._run_subtask(st, request, json.loads(prior_json))
+
+        i = 0
+        while i < len(subtasks):
+            subtask = subtasks[i]
+            if not self._dependencies_met(subtask, state):
+                i += 1
+                continue
+            result = run_step(subtask.model_dump_json(), json.dumps(verified_outcomes))
             state.subtask_status[subtask.id] = (
                 SubtaskStatus.VERIFIED if result["passed"] else SubtaskStatus.FAILED
             )
             state.current_subtask = subtask.id
-            self.store.save(state)
+            self._save(state)
             if result["passed"]:
                 verified_outcomes.append(f"{subtask.id}: verified")
-            else:
-                overall_passed = False
-                failure_class = result.get("failure_class")
-                self.tracer.emit("subtask_failed", subtask=subtask.id,
-                                 failure_class=failure_class)
-                break
+                i += 1
+                continue
+
+            failure_class = result.get("failure_class")
+            self.tracer.emit("subtask_failed", subtask=subtask.id,
+                             failure_class=failure_class)
+            # Bounded manager replan: the documented plan-layer recovery.
+            if (self.config.enable_strong_manager
+                    and replans < self.config.max_escalations):
+                replans += 1
+                self.metrics.inc("replans")
+                new_plan = self.manager.replan(request, str(failure_class),
+                                               result.get("detail", ""),
+                                               verified_outcomes)
+                self.tracer.emit("manager_replan", attempt=replans,
+                                 subtasks=[s.id for s in new_plan.subtasks])
+                remaining = [s for s in new_plan.subtasks
+                             if str(state.subtask_status.get(s.id)) != "verified"]
+                if remaining:
+                    subtasks = subtasks[:i] + remaining
+                    state.plan = new_plan
+                    self._save(state)
+                    continue
+            break
         else:
             state.status = RunStatus.SUCCEEDED
 
-        if not overall_passed:
+        overall_passed = (failure_class is None
+                          and all(str(v) == "verified"
+                                  for v in state.subtask_status.values())
+                          and state.subtask_status == {
+                              s.id: SubtaskStatus.VERIFIED
+                              for s in (state.plan.subtasks if state.plan else [])})
+        if overall_passed:
+            state.status = RunStatus.SUCCEEDED
+        else:
             state.status = RunStatus.FAILED
-            state.failure_class = failure_class
+            state.failure_class = failure_class or FailureClass.UNEXPECTED_STATE
 
         wall_ms = (time.perf_counter() - start) * 1000.0
         state.metrics = self._collect_metrics(wall_ms)
-        state.result = {"verified": overall_passed,
-                        "outcomes": verified_outcomes}
-        self.store.save(state)
+        state.result = {"verified": overall_passed, "outcomes": verified_outcomes}
+        self._save(state)
         self.tracer.emit("run_end", status=str(state.status),
-                         verified=overall_passed, failure_class=failure_class,
+                         verified=overall_passed,
+                         failure_class=state.failure_class,
                          wall_ms=round(wall_ms, 1))
         self.tracer.flush()
 
         return RunResult(
-            run_id=run_id,
-            status=state.status,
-            verified=overall_passed,
-            result=state.result,
-            metrics=state.metrics,
-            failure_class=failure_class,
-        )
+            run_id=run_id, status=state.status, verified=overall_passed,
+            result=state.result, metrics=state.metrics,
+            failure_class=state.failure_class,
+        ).model_dump(mode="json")
+
+    def _dependencies_met(self, subtask: Subtask, state: RunState) -> bool:
+        for dep in subtask.depends_on:
+            if str(state.subtask_status.get(dep)) != "verified":
+                return False
+        return True
+
+    def _save(self, state: RunState) -> None:
+        try:
+            self.store.save(state)
+        except Exception:
+            pass
 
     # -- subtask loop -----------------------------------------------------
     def _run_subtask(self, subtask: Subtask, request: TaskRequest,
@@ -295,7 +375,7 @@ class Engine:
 
         fc = FailureClass.BUDGET_EXCEEDED
         self.metrics.fail(fc)
-        return {"passed": False, "failure_class": fc}
+        return {"passed": False, "failure_class": fc, "detail": "budget exceeded"}
 
     def _resolve_step(self, raw: dict[str, Any],
                       obs: Observation) -> dict[str, Any] | None:
@@ -308,13 +388,24 @@ class Engine:
         tid = raw.get("target")
         if tid and tid in {t.id for t in obs.targets}:
             return raw
+        if "target_label" in raw:
+            label = str(raw["target_label"]).lower()
+            matches = [t for t in obs.targets
+                       if t.id == raw["target_label"]
+                       or label in (t.label or "").lower()]
+            if len(matches) != 1:
+                return None  # ambiguous or absent -> fail closed
+            raw["target"] = matches[0].id
+            return raw
         want = raw.get("target_any") or raw.get("target_kind")
         if want:
-            for t in obs.targets:
-                if t.kind == want or t.role == want:
-                    raw["target"] = t.id
-                    return raw
-            return None
+            matches = [t for t in obs.targets if t.kind == want or t.role == want]
+            if len(matches) != 1:
+                # Ambiguous (several candidates) or absent: never bind to an
+                # arbitrary first hit — fail with UNEXPECTED_STATE instead.
+                return None
+            raw["target"] = matches[0].id
+            return raw
         if not tid:
             return raw  # target-less action (key/scroll/wait)
         # named target not present

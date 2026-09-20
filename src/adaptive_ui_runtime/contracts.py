@@ -237,3 +237,5 @@ class RuntimeConfig(BaseModel):
     transports: list[str] = Field(default_factory=lambda: ["relay", "playwriter", "fake"])
     #: Fara 9B is excluded from v1 routing by measured evidence (local_cua PR #16).
     allow_fara_9b: bool = False
+    #: Use DBOS durable workflow execution when DBOS is available.
+    durable: bool = True

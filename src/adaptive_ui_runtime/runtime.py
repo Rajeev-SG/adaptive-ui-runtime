@@ -47,10 +47,19 @@ def make_transport(name: str | None = None, url: str | None = None,
 
 class Runtime:
     def __init__(self, config: RuntimeConfig | None = None, transport: str | None = None,
-                 store: Any | None = None) -> None:
+                 store: Any | None = None, durable: bool | None = None) -> None:
         self.config = config or RuntimeConfig()
         self.transport_name = transport or os.environ.get("AUR_TRANSPORT") or "fake"
+        # Durability: DBOS workflow execution when it can launch, else file store.
+        if durable is not None:
+            self.config.durable = durable
+        elif os.environ.get("AUR_DURABILITY", "dbos").lower() == "file":
+            self.config.durable = False
+        else:
+            from .durable_exec import launch as _launch
+            self.config.durable = _launch()
         self.store = store or default_store()
+        self.durability = "dbos" if self.config.durable else "file"
 
     # -- helpers ----------------------------------------------------------
     def _engine(self, transport: Transport | None = None) -> Engine:
@@ -93,10 +102,18 @@ class Runtime:
 
     # -- ui.status --------------------------------------------------------
     def status(self, run_id: str) -> dict[str, Any]:
+        from . import durable_exec
+        wf = durable_exec.workflow_status(run_id)
         state = self.store.load(run_id)
-        if state is None:
+        if state is None and wf is None:
             return {"run_id": run_id, "found": False}
-        return {"found": True, **state.model_dump(mode="json")}
+        out: dict[str, Any] = {"found": True, "run_id": run_id,
+                               "durability": "dbos" if durable_exec.dbos_active() else "file"}
+        if state is not None:
+            out.update(state.model_dump(mode="json"))
+        if wf is not None:
+            out["workflow"] = wf
+        return out
 
     # -- ui.trace ---------------------------------------------------------
     def trace(self, run_id: str) -> dict[str, Any]:

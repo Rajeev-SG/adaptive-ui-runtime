@@ -129,7 +129,9 @@ def launch_dbos() -> bool:
 
 
 def default_store() -> Any:
-    if os.environ.get("AUR_DURABILITY", "file") == "dbos" and launch_dbos():
+    """File store is the working backend; DBOS provides workflow durability on
+    top. This never raises and never duplicates a model/browser asset."""
+    if os.environ.get("AUR_DURABILITY", "").lower() == "dbos" and launch_dbos():
         return DBOSRunStore()
     return FileRunStore()
 

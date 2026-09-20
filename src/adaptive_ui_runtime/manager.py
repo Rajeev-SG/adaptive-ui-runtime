@@ -157,7 +157,9 @@ class Manager:
                     raw["allowed_routes"] = routes
                 else:
                     raw.pop("allowed_routes", None)
-                raw.setdefault("budget", Budget())
+                budget = raw.get("budget")
+                raw["budget"] = Budget(**budget) if isinstance(budget, dict) else (
+                    budget or Budget())
                 subtasks.append(Subtask(**raw))
             except (ValidationError, TypeError) as exc:
                 raise ValueError(f"invalid subtask {i}: {exc}") from exc
