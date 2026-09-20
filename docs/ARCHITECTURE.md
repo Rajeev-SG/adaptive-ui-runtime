@@ -2,9 +2,11 @@
 
 ## System boundary
 
-This repo owns **orchestration, routing, verification, recovery, durable state and agent exposure**.
+This repo owns **orchestration, routing, verification composition, recovery policy, durable workflow configuration and agent exposure**.
 
-It does not own the underlying models/browser engines.
+It does **not** own the underlying models, browser engines, generic workflow engine, generic self-healing framework, benchmark framework or observability backend.
+
+The design goal is to compose existing capabilities with the smallest possible amount of glue.
 
 ```text
                        Agent
@@ -44,10 +46,44 @@ It does not own the underlying models/browser engines.
                 |                                 |
               pass                         classified failure
                 |                                 |
-          next subtask              deterministic bounded repair
+          next subtask              existing repair capability
                                                   |
                                       alternate route / manager
 ```
+
+## Composition rule
+
+Every architectural layer must answer: **what existing component already provides this?**
+
+Expected composition:
+
+| Need | Preferred source |
+|---|---|
+| Durable workflows/checkpoints/resume | DBOS |
+| Typed manager/model interface | Pydantic AI |
+| MCP transport/protocol | MCP SDK |
+| Jev semantics + browser bridge | existing `jev-tests` implementation |
+| Local Fara adapters/artifacts | existing `local_cua` implementation/cache |
+| Browser execution | Playwriter / Browser Relay |
+| DOM/browser self-healing | Stagehand where it proves useful |
+| low-level CDP escape hatch/helpers | Browser Harness where it proves useful |
+| task/reset/verifier corpus | `web-automation-microbench` |
+| traces/export | OpenTelemetry-compatible stack |
+
+The runtime should normally add **adapters and policy**, not replace these systems.
+
+## Local-first implementation
+
+Before acquiring an external asset, consult `docs/ASSET_INVENTORY.md`.
+
+Local development should prefer:
+- existing repo clones/worktrees;
+- existing model caches;
+- existing installed browser runtimes;
+- already-running local services;
+- already-installed packages where version-compatible.
+
+The inventory also records the canonical remote source/version so clean installs stay reproducible.
 
 ## Why this split
 
@@ -221,6 +257,8 @@ Durable boundaries should include:
 
 Do not checkpoint after every trivial pure helper if it adds latency with no recovery value.
 
+Do not build a replacement workflow engine if DBOS meets these requirements.
+
 ## Pydantic AI
 
 Use typed manager inputs/outputs and structured recovery decisions. The manager should return validated plans/subtasks rather than prose that downstream code must reinterpret.
@@ -229,21 +267,32 @@ Do not put Pydantic AI in the hot path for actions that do not need the strong m
 
 ## Self-healing
 
-"Self-healing" means classified recovery, not retries.
+"Self-healing" means **orchestrating the best existing repair capability**, not writing a new browser-healing framework.
+
+Prefer, in order where applicable:
+- transport-native target rebinding/focus/stale-node handling;
+- Stagehand semantic observe/replay/healing;
+- Browser Harness/CDP helper paths;
+- visual grounding/Fara;
+- strong-manager replan.
+
+The bespoke recovery layer should remain small: failure classification, budget enforcement, route selection and verification.
 
 Initial repair table:
 
 | Failure | First repair | Next escalation |
 |---|---|---|
-| stale node | re-observe/rebind | alternate structured transport |
-| focus lost | focus target tab/window | transport fallback |
-| obstruction | dismiss known obstruction / re-observe | manager |
-| DOM drift | semantic rebind | visual worker |
+| stale node | transport/Stagehand re-observe/rebind | alternate structured transport |
+| focus lost | existing transport/browser focus operation | transport fallback |
+| obstruction | existing semantic/DOM dismiss + re-observe | manager |
+| DOM drift | existing semantic rebind | visual worker |
 | structured target unavailable | visual grounder/Fara | manager |
 | transport error | switch transport if safe | manager |
 | premature DONE | verifier rejects | alternate worker/manager |
 | repeated action | terminate worker | alternate route |
 | unexpected state | no blind retry | manager replan |
+
+If a mature included dependency already performs a repair safely, call it; do not duplicate its heuristics in this repo.
 
 ## Strong manager context
 
