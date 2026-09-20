@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import statistics
 import sys
 import time
 from pathlib import Path
@@ -18,8 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from adaptive_ui_runtime.contracts import (  # noqa: E402
-    Plan, RuntimeConfig, Subtask, SuccessCriterion, TaskRequest)
+from adaptive_ui_runtime.contracts import Plan, Subtask, SuccessCriterion, TaskRequest  # noqa: E402
 from adaptive_ui_runtime.durability import FileRunStore  # noqa: E402
 from adaptive_ui_runtime.engine import Engine  # noqa: E402
 from adaptive_ui_runtime.evaluation import MODES  # noqa: E402
@@ -52,13 +49,16 @@ def main() -> int:
     args = ap.parse_args()
 
     crit, st = build_task()
-    modes = ["adaptive", "strong_only", "no_jev", "no_fara", "deterministic_only"]
+    modes = ["adaptive", "strong_only", "no_jev", "no_fara", "no_showui", "deterministic_only"]
     out = {"transport": args.transport, "reps": args.reps,
            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "arms": {}}
 
     for mode in modes:
         walls, wins, failures = [], 0, {}
-        for rep in range(args.reps):
+        actions_mean = obs_mean = jev_mean = mgr_mean = rec_mean = loop_mean = 0.0
+        _acc = {"actions": 0, "observations": 0, "jev_calls": 0, "manager_calls": 0,
+                "recoveries": 0, "loops": 0}
+        for _rep in range(args.reps):
             t = make_transport(args.transport)
             # clean, identical start state for every rep
             if hasattr(t, "reset"):
@@ -78,15 +78,31 @@ def main() -> int:
                 wins += 1
             else:
                 failures[str(r.failure_class)] = failures.get(str(r.failure_class), 0) + 1
+            for k in _acc:
+                _acc[k] += r.metrics.get(k, 0) or 0
             t.close()
         o = sorted(walls)
+        n = max(1, args.reps)
+        actions_mean = round(_acc["actions"] / n, 2)
+        obs_mean = round(_acc["observations"] / n, 2)
+        jev_mean = round(_acc["jev_calls"] / n, 2)
+        mgr_mean = round(_acc["manager_calls"] / n, 2)
+        rec_mean = round(_acc["recoveries"] / n, 2)
+        loop_mean = round(_acc["loops"] / n, 2)
         out["arms"][mode] = {
             "verified_success": wins,
             "reps": args.reps,
+            "success_rate": round(wins / args.reps, 3),
             "wall_p50_ms": round(o[len(o) // 2], 1),
             "wall_p95_ms": round(o[min(len(o) - 1, int(len(o) * 0.95))], 1),
             "wall_all_ms": [round(w, 1) for w in walls],
             "failure_classes": failures,
+            "actions_mean": actions_mean,
+            "observations_mean": obs_mean,
+            "jev_calls_mean": jev_mean,
+            "manager_calls_mean": mgr_mean,
+            "recoveries_mean": rec_mean,
+            "loops_mean": loop_mean,
         }
         print(f"{mode:20s} {wins}/{args.reps} p50={out['arms'][mode]['wall_p50_ms']}ms "
               f"p95={out['arms'][mode]['wall_p95_ms']}ms {failures}")

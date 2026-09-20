@@ -437,9 +437,16 @@ class Engine:
         want = raw.get("target_any") or raw.get("target_kind")
         if want:
             matches = [t for t in obs.targets if t.kind == want or t.role == want]
+            if "target_nth" in raw:
+                idx = int(raw["target_nth"])
+                if idx < 0 or idx >= len(matches):
+                    return None  # out of range -> fail closed
+                raw["target"] = matches[idx].id
+                return raw
             if len(matches) != 1:
                 # Ambiguous (several candidates) or absent: never bind to an
                 # arbitrary first hit — fail with UNEXPECTED_STATE instead.
+                # A deterministic ordinal (`target_nth`) is required to choose.
                 return None
             raw["target"] = matches[0].id
             return raw

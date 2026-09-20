@@ -14,8 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from adaptive_ui_runtime.benchmark import git_rev, run_suite, write_results  # noqa: E402
-from adaptive_ui_runtime.contracts import (  # noqa: E402
-    Plan, Subtask, SuccessCriterion, TaskRequest)
+from adaptive_ui_runtime.contracts import Plan, Subtask, SuccessCriterion, TaskRequest  # noqa: E402
 
 
 def _crit(value: str) -> SuccessCriterion:

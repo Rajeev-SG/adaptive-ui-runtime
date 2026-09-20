@@ -54,6 +54,9 @@ class IsolatedBrowserTransport:
         self.context = self.browser.new_context(viewport={"width": 1440, "height": 900})
         self.page = self.context.new_page()
         self.commands = 0
+        #: One-shot fault injection for recovery tests/benchmarks:
+        #: "stale" raises a stale-target error on the next action.
+        self.fail_next: str | None = None
         if url:
             self.navigate(url)
 
@@ -85,14 +88,28 @@ class IsolatedBrowserTransport:
                                {"n": [t.id + t.value for t in targets]}),
                            url=self.page.url, targets=targets, transport=self.name)
 
+    def _inject_failure(self) -> None:
+        if self.fail_next:
+            kind, self.fail_next = self.fail_next, None
+            from .base import StaleTargetError
+            if kind == "stale":
+                raise StaleTargetError("injected stale target")
+
     def _sel(self, target: Target) -> str:
+        self._inject_failure()
         if not self.page.evaluate(_STAMP_JS, target.node):
             raise RuntimeError("stale or covered target")
         return f"[data-aur='{target.node}']"
 
     def click(self, target: Target) -> ActionResult:
         self.commands += 1
-        self.page.locator(self._sel(target)).click(timeout=8000)
+        loc = self.page.locator(self._sel(target))
+        try:
+            loc.click(timeout=8000)
+        except Exception:
+            # Hidden-but-interactive controls (e.g. TodoMVC's opacity:0 toggle)
+            # need a forced click; this is transport-native, not a bespoke repair.
+            loc.click(timeout=8000, force=True)
         return ActionResult(ok=True, changed_state=True)
 
     def type(self, target: Target, text: str) -> ActionResult:
