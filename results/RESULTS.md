@@ -108,8 +108,17 @@ arms pass.
 **Supported:** deterministic DOM tasks with a known structured step sequence; multi-step
 structured workflows on a single page; stateful DOM/eval tasks driven by the
 structured/manager loop; finite-choice decisions via Jev (fail-closed escalation);
-recoverable transport failures via classified bounded recovery on a real browser;
-live-site DOM/eval audit tasks (verified on PUMA-UK tag inspection).
+recoverable transport failures via classified bounded recovery on a real browser.
+
+**Not supported (corrected 2026-09-21): live-site DOM/eval audit tasks.** An earlier
+revision claimed these were "verified on PUMA-UK tag inspection"; no artifact backed that
+claim — `tests/test_microbench.py` only *constructs* the task, it does not run it. Measured
+on the canonical instrument (`Rajeev-SG/web-automation-microbench`, PR #38), the runtime
+scores **0/22** across the harvested corpus and **0/2** on `puma-uk-tag-inspection`. Root
+cause: the runtime's action vocabulary is click / type / key / select / scroll / wait /
+focus / inspect (`Engine._act`), with **no action that evaluates page JavaScript**, so it
+cannot set the `window.__bench_finding` that every corpus audit task requires. Making the
+audit class supported requires a page-eval action (issue for the next cycle).
 
 **Out of scope:** bare Fara/ShowUI on stateful, multi-item or live-site DOM-truth
 workflows (local_cua PR #16); Fara-9B anywhere in v1; Stagehand, and Browser Harness
